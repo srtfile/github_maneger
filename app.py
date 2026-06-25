@@ -251,6 +251,69 @@ def get_secrets():
     return jsonify(resp.json())
 
 
+@app.route('/api/secrets/add', methods=['POST'])
+def add_secret():
+    data = request.json or {}
+    token = data.get('token')
+    username = data.get('username')
+    repo = data.get('repo')
+    secret_name = data.get('secret_name')
+    secret_value = data.get('secret_value')
+    
+    if not all([token, username, repo, secret_name, secret_value]):
+        return jsonify({'error': 'Missing required parameters'}), 400
+    
+    s = github_session(token)
+    
+    # Get the public key for encryption
+    key_resp = s.get(f'{GITHUB_API}/repos/{username}/{repo}/actions/secrets/public-key')
+    if not key_resp.ok:
+        return jsonify({'error': 'Failed to get public key'}), key_resp.status_code
+    
+    public_key_data = key_resp.json()
+    
+    # Encrypt the secret using the public key
+    try:
+        from base64 import b64encode
+        from nacl import encoding, public
+        
+        public_key = public.PublicKey(public_key_data['key'].encode('utf-8'), encoding.Base64Encoder())
+        sealed_box = public.SealedBox(public_key)
+        encrypted = sealed_box.encrypt(secret_value.encode('utf-8'))
+        encrypted_value = b64encode(encrypted).decode('utf-8')
+    except ImportError:
+        # If PyNaCl is not available, return error
+        return jsonify({'error': 'PyNaCl library required for secret encryption. Install with: pip install pynacl'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Encryption failed: {str(e)}'}), 500
+    
+    # Create or update the secret
+    payload = {
+        'encrypted_value': encrypted_value,
+        'key_id': public_key_data['key_id']
+    }
+    
+    resp = s.put(f'{GITHUB_API}/repos/{username}/{repo}/actions/secrets/{secret_name}', json=payload)
+    if resp.status_code in [201, 204]:
+        return jsonify({'success': True, 'message': f'Secret {secret_name} added successfully'})
+    return jsonify({'error': resp.json().get('message', 'Failed to add secret')}), resp.status_code
+
+
+@app.route('/api/secrets/delete', methods=['POST'])
+def delete_secret():
+    data = request.json or {}
+    token = data.get('token')
+    username = data.get('username')
+    repo = data.get('repo')
+    secret_name = data.get('secret_name')
+    
+    s = github_session(token)
+    resp = s.delete(f'{GITHUB_API}/repos/{username}/{repo}/actions/secrets/{secret_name}')
+    if resp.status_code == 204:
+        return jsonify({'success': True})
+    return jsonify({'error': 'Failed to delete secret'}), resp.status_code
+
+
 @app.route('/api/issues', methods=['POST'])
 def get_issues():
     data = request.json or {}
@@ -296,6 +359,318 @@ def get_commits():
     if not resp.ok:
         return jsonify({'error': 'Failed to fetch commits'}), resp.status_code
     return jsonify({'commits': resp.json()})
+
+
+# ─── GitHub Pages Management ──────────────────────────────────────────────────
+
+@app.route('/api/pages/status', methods=['POST'])
+def get_pages_status():
+    """Get GitHub Pages status for a repository"""
+    data = request.json or {}
+    token = data.get('token')
+    username = data.get('username')
+    repo = data.get('repo')
+    
+    s = github_session(token)
+    resp = s.get(f'{GITHUB_API}/repos/{username}/{repo}/pages')
+    
+    if resp.status_code == 404:
+        return jsonify({'enabled': False, 'message': 'GitHub Pages not enabled'})
+    elif not resp.ok:
+        return jsonify({'error': 'Failed to get Pages status'}), resp.status_code
+    
+    pages_data = resp.json()
+    return jsonify({
+        'enabled': True,
+        'url': pages_data.get('html_url'),
+        'status': pages_data.get('status'),
+        'source': pages_data.get('source'),
+        'custom_domain': pages_data.get('cname'),
+        'https_enforced': pages_data.get('https_enforced', False)
+    })
+
+
+@app.route('/api/pages/enable', methods=['POST'])
+def enable_pages():
+    """Enable GitHub Pages for a repository"""
+    data = request.json or {}
+    token = data.get('token')
+    username = data.get('username')
+    repo = data.get('repo')
+    branch = data.get('branch', 'main')
+    path = data.get('path', '/')  # '/' or '/docs'
+    
+    s = github_session(token)
+    
+    # Create or update GitHub Pages
+    payload = {
+        'source': {
+            'branch': branch,
+            'path': path
+        }
+    }
+    
+    resp = s.post(f'{GITHUB_API}/repos/{username}/{repo}/pages', json=payload)
+    
+    if resp.status_code in [201, 204, 409]:
+        # 409 means Pages already exists, try to update it
+        if resp.status_code == 409:
+            update_resp = s.put(f'{GITHUB_API}/repos/{username}/{repo}/pages', json=payload)
+            if update_resp.ok or update_resp.status_code == 204:
+                return jsonify({'success': True, 'message': 'GitHub Pages updated successfully'})
+            return jsonify({'error': 'Failed to update Pages'}), update_resp.status_code
+        
+        return jsonify({'success': True, 'message': 'GitHub Pages enabled successfully'})
+    
+    return jsonify({'error': resp.json().get('message', 'Failed to enable Pages')}), resp.status_code
+
+
+@app.route('/api/pages/disable', methods=['POST'])
+def disable_pages():
+    """Disable GitHub Pages for a repository"""
+    data = request.json or {}
+    token = data.get('token')
+    username = data.get('username')
+    repo = data.get('repo')
+    
+    s = github_session(token)
+    resp = s.delete(f'{GITHUB_API}/repos/{username}/{repo}/pages')
+    
+    if resp.status_code == 204:
+        return jsonify({'success': True, 'message': 'GitHub Pages disabled'})
+    return jsonify({'error': 'Failed to disable Pages'}), resp.status_code
+
+
+@app.route('/api/pages/builds', methods=['POST'])
+def get_pages_builds():
+    """Get GitHub Pages build history"""
+    data = request.json or {}
+    token = data.get('token')
+    username = data.get('username')
+    repo = data.get('repo')
+    
+    s = github_session(token)
+    resp = s.get(f'{GITHUB_API}/repos/{username}/{repo}/pages/builds')
+    
+    if not resp.ok:
+        return jsonify({'error': 'Failed to get builds'}), resp.status_code
+    
+    return jsonify({'builds': resp.json()})
+
+
+@app.route('/api/pages/build', methods=['POST'])
+def request_pages_build():
+    """Request a new GitHub Pages build"""
+    data = request.json or {}
+    token = data.get('token')
+    username = data.get('username')
+    repo = data.get('repo')
+    
+    s = github_session(token)
+    resp = s.post(f'{GITHUB_API}/repos/{username}/{repo}/pages/builds')
+    
+    if resp.status_code == 201:
+        return jsonify({'success': True, 'message': 'Build requested successfully'})
+    return jsonify({'error': 'Failed to request build'}), resp.status_code
+
+
+# ─── Multi-Account Management ─────────────────────────────────────────────────
+
+@app.route('/api/accounts/verify', methods=['POST'])
+def verify_account():
+    """Verify a GitHub account using token and username"""
+    data = request.json or {}
+    token = data.get('token')
+    username = data.get('username')
+    
+    if not token:
+        return jsonify({'error': 'Token required'}), 400
+    
+    s = github_session(token)
+    resp = s.get(f'{GITHUB_API}/user')
+    
+    if resp.status_code != 200:
+        return jsonify({'error': 'Invalid token or unauthorized'}), 401
+    
+    user_data = resp.json()
+    actual_username = user_data.get('login')
+    
+    # If username provided, verify it matches
+    if username and username.lower() != actual_username.lower():
+        return jsonify({
+            'warning': f'Username mismatch: token belongs to @{actual_username}, not @{username}',
+            'actual_username': actual_username,
+            'user_data': user_data
+        })
+    
+    return jsonify({
+        'success': True,
+        'username': actual_username,
+        'user_data': user_data
+    })
+
+
+@app.route('/api/accounts/repos', methods=['POST'])
+def get_account_repos():
+    """Get repositories for any GitHub account (including organizations)"""
+    data = request.json or {}
+    token = data.get('token')
+    target_username = data.get('target_username')
+    
+    s = github_session(token)
+    
+    # If target username specified, get their public repos
+    if target_username:
+        resp = s.get(f'{GITHUB_API}/users/{target_username}/repos', params={
+            'per_page': 100, 'sort': 'updated', 'type': 'all'
+        })
+    else:
+        # Get authenticated user's repos
+        resp = s.get(f'{GITHUB_API}/user/repos', params={
+            'per_page': 100, 'sort': 'updated', 'type': 'all'
+        })
+    
+    if not resp.ok:
+        return jsonify({'error': resp.json().get('message', 'Failed to fetch repos')}), resp.status_code
+    
+    repos = resp.json()
+    return jsonify({'repos': repos, 'total': len(repos)})
+
+
+@app.route('/api/accounts/organizations', methods=['POST'])
+def get_organizations():
+    """Get organizations for the authenticated user"""
+    data = request.json or {}
+    token = data.get('token')
+    
+    s = github_session(token)
+    resp = s.get(f'{GITHUB_API}/user/orgs')
+    
+    if not resp.ok:
+        return jsonify({'error': 'Failed to fetch organizations'}), resp.status_code
+    
+    return jsonify({'organizations': resp.json()})
+
+
+@app.route('/api/accounts/org-repos', methods=['POST'])
+def get_org_repos():
+    """Get repositories for an organization"""
+    data = request.json or {}
+    token = data.get('token')
+    org_name = data.get('org_name')
+    
+    if not org_name:
+        return jsonify({'error': 'Organization name required'}), 400
+    
+    s = github_session(token)
+    resp = s.get(f'{GITHUB_API}/orgs/{org_name}/repos', params={
+        'per_page': 100, 'sort': 'updated'
+    })
+    
+    if not resp.ok:
+        return jsonify({'error': 'Failed to fetch organization repos'}), resp.status_code
+    
+    return jsonify({'repos': resp.json()})
+
+
+# ─── Batch Operations ─────────────────────────────────────────────────────────
+
+@app.route('/api/batch/enable-pages', methods=['POST'])
+def batch_enable_pages():
+    """Enable GitHub Pages for multiple repositories"""
+    data = request.json or {}
+    token = data.get('token')
+    repositories = data.get('repositories', [])  # [{'username': 'x', 'repo': 'y', 'branch': 'main', 'path': '/'}]
+    
+    results = []
+    s = github_session(token)
+    
+    for repo_config in repositories:
+        username = repo_config.get('username')
+        repo = repo_config.get('repo')
+        branch = repo_config.get('branch', 'main')
+        path = repo_config.get('path', '/')
+        
+        payload = {
+            'source': {
+                'branch': branch,
+                'path': path
+            }
+        }
+        
+        resp = s.post(f'{GITHUB_API}/repos/{username}/{repo}/pages', json=payload)
+        
+        if resp.status_code in [201, 204]:
+            results.append({'repo': f'{username}/{repo}', 'status': 'success'})
+        elif resp.status_code == 409:
+            # Try to update
+            update_resp = s.put(f'{GITHUB_API}/repos/{username}/{repo}/pages', json=payload)
+            if update_resp.ok or update_resp.status_code == 204:
+                results.append({'repo': f'{username}/{repo}', 'status': 'updated'})
+            else:
+                results.append({'repo': f'{username}/{repo}', 'status': 'failed', 'error': 'Update failed'})
+        else:
+            results.append({'repo': f'{username}/{repo}', 'status': 'failed', 'error': resp.json().get('message', 'Unknown error')})
+    
+    return jsonify({'results': results})
+
+
+@app.route('/api/batch/add-secrets', methods=['POST'])
+def batch_add_secrets():
+    """Add the same secret to multiple repositories"""
+    data = request.json or {}
+    token = data.get('token')
+    repositories = data.get('repositories', [])  # [{'username': 'x', 'repo': 'y'}]
+    secret_name = data.get('secret_name')
+    secret_value = data.get('secret_value')
+    
+    if not all([secret_name, secret_value]):
+        return jsonify({'error': 'Secret name and value required'}), 400
+    
+    results = []
+    s = github_session(token)
+    
+    try:
+        from base64 import b64encode
+        from nacl import encoding, public
+    except ImportError:
+        return jsonify({'error': 'PyNaCl library required. Install with: pip install pynacl'}), 500
+    
+    for repo_config in repositories:
+        username = repo_config.get('username')
+        repo = repo_config.get('repo')
+        
+        try:
+            # Get public key
+            key_resp = s.get(f'{GITHUB_API}/repos/{username}/{repo}/actions/secrets/public-key')
+            if not key_resp.ok:
+                results.append({'repo': f'{username}/{repo}', 'status': 'failed', 'error': 'Failed to get public key'})
+                continue
+            
+            public_key_data = key_resp.json()
+            
+            # Encrypt secret
+            public_key_obj = public.PublicKey(public_key_data['key'].encode('utf-8'), encoding.Base64Encoder())
+            sealed_box = public.SealedBox(public_key_obj)
+            encrypted = sealed_box.encrypt(secret_value.encode('utf-8'))
+            encrypted_value = b64encode(encrypted).decode('utf-8')
+            
+            # Add secret
+            payload = {
+                'encrypted_value': encrypted_value,
+                'key_id': public_key_data['key_id']
+            }
+            
+            resp = s.put(f'{GITHUB_API}/repos/{username}/{repo}/actions/secrets/{secret_name}', json=payload)
+            if resp.status_code in [201, 204]:
+                results.append({'repo': f'{username}/{repo}', 'status': 'success'})
+            else:
+                results.append({'repo': f'{username}/{repo}', 'status': 'failed', 'error': resp.json().get('message', 'Unknown error')})
+        
+        except Exception as e:
+            results.append({'repo': f'{username}/{repo}', 'status': 'failed', 'error': str(e)})
+    
+    return jsonify({'results': results})
 
 
 if __name__ == '__main__':
