@@ -775,6 +775,14 @@ body::before {
         <span class="nav-icon"><i class="fas fa-lock"></i></span>
         <span>Secrets</span>
       </div>
+      <div class="nav-item" onclick="showTab('pages')">
+        <span class="nav-icon"><i class="fas fa-globe"></i></span>
+        <span>GitHub Pages</span>
+      </div>
+      <div class="nav-item" onclick="showTab('accounts')">
+        <span class="nav-icon"><i class="fas fa-users"></i></span>
+        <span>Multi-Account</span>
+      </div>
       <div class="nav-item" onclick="showTab('upload')">
         <span class="nav-icon"><i class="fas fa-cloud-upload-alt"></i></span>
         <span>Upload</span>
@@ -982,6 +990,7 @@ body::before {
             <i class="fas fa-lock" style="color:var(--accent3)"></i>
             <h3>Repository Secrets</h3>
             <div class="card-actions">
+              <button class="btn btn-primary btn-sm" onclick="openAddSecretModal()"><i class="fas fa-plus"></i> Add Secret</button>
               <button class="btn btn-secondary btn-sm" onclick="loadSecrets()"><i class="fas fa-sync"></i></button>
             </div>
           </div>
@@ -992,6 +1001,142 @@ body::before {
         <p style="font-size:11px;color:var(--text3);margin-top:10px;padding:0 4px">
           <i class="fas fa-info-circle"></i> Secret values are encrypted and cannot be retrieved — only names are visible.
         </p>
+      </div>
+
+      <!-- ── GITHUB PAGES ── -->
+      <div class="tab-panel" id="tab-pages">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header">
+            <i class="fas fa-globe" style="color:var(--green)"></i>
+            <h3>GitHub Pages Status</h3>
+            <div class="card-actions">
+              <button class="btn btn-secondary btn-sm" onclick="checkPagesStatus()"><i class="fas fa-sync"></i> Refresh</button>
+            </div>
+          </div>
+          <div style="padding:20px" id="pages-status-container">
+            <div class="empty-state"><p>Select a repository first</p></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-cog" style="color:var(--accent2)"></i>
+            <h3>Configure GitHub Pages</h3>
+          </div>
+          <div style="padding:20px">
+            <div class="form-group">
+              <label class="form-label">Source Branch</label>
+              <select class="form-select" id="pages-branch-select">
+                <option value="main">main</option>
+                <option value="gh-pages">gh-pages</option>
+                <option value="master">master</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Source Path</label>
+              <select class="form-select" id="pages-path-select">
+                <option value="/">/ (root)</option>
+                <option value="/docs">/docs</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:10px">
+              <button class="btn btn-success" onclick="enableGitHubPages()"><i class="fas fa-check"></i> Enable GitHub Pages</button>
+              <button class="btn btn-danger" onclick="disableGitHubPages()"><i class="fas fa-times"></i> Disable Pages</button>
+              <button class="btn btn-secondary" onclick="requestPagesBuild()"><i class="fas fa-hammer"></i> Request Build</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card-header">
+            <i class="fas fa-history" style="color:var(--yellow)"></i>
+            <h3>Build History</h3>
+            <div class="card-actions">
+              <button class="btn btn-secondary btn-sm" onclick="loadPagesBuilds()"><i class="fas fa-sync"></i></button>
+            </div>
+          </div>
+          <div style="padding:12px" id="pages-builds-container">
+            <div class="empty-state"><p>No builds yet</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── MULTI-ACCOUNT ── -->
+      <div class="tab-panel" id="tab-accounts">
+        <div style="max-width:800px;margin:0 auto">
+          
+          <!-- Current Account -->
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-header">
+              <i class="fas fa-user" style="color:var(--green)"></i>
+              <h3>Current Account</h3>
+            </div>
+            <div style="padding:20px">
+              <div style="display:flex;align-items:center;gap:16px">
+                <div class="user-avatar" id="multi-current-avatar" style="width:48px;height:48px;font-size:20px">?</div>
+                <div style="flex:1">
+                  <div style="font-size:16px;font-weight:600;color:var(--text)" id="multi-current-name">Loading...</div>
+                  <div style="font-size:13px;color:var(--text3)" id="multi-current-handle">@...</div>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="refreshCurrentAccount()"><i class="fas fa-sync"></i> Refresh</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Add Another Account -->
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-header">
+              <i class="fas fa-user-plus" style="color:var(--accent2)"></i>
+              <h3>Add/Switch Account</h3>
+            </div>
+            <div style="padding:20px">
+              <div class="form-group">
+                <label class="form-label">GitHub Username</label>
+                <input type="text" class="form-input" id="other-account-username" placeholder="other-username">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Personal Access Token</label>
+                <div style="position:relative">
+                  <input type="password" class="form-input" id="other-account-token" placeholder="ghp_xxxxxxxxxxxx" style="padding-right:40px">
+                  <button onclick="toggleOtherAccountToken()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;padding:8px">
+                    <i class="fas fa-eye" id="other-account-token-eye"></i>
+                  </button>
+                </div>
+              </div>
+              <div style="display:flex;gap:10px">
+                <button class="btn btn-primary" onclick="verifyOtherAccount()"><i class="fas fa-check-circle"></i> Verify & Switch</button>
+                <button class="btn btn-secondary" onclick="clearOtherAccount()"><i class="fas fa-eraser"></i> Clear</button>
+              </div>
+              <div id="other-account-result" style="margin-top:14px;display:none"></div>
+            </div>
+          </div>
+
+          <!-- Account Actions -->
+          <div class="card">
+            <div class="card-header">
+              <i class="fas fa-tasks" style="color:var(--yellow)"></i>
+              <h3>Account Operations</h3>
+            </div>
+            <div style="padding:20px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <button class="btn btn-secondary" onclick="loadAccountRepos()">
+                  <i class="fas fa-folder"></i> View Repositories
+                </button>
+                <button class="btn btn-secondary" onclick="loadOrganizations()">
+                  <i class="fas fa-building"></i> Organizations
+                </button>
+                <button class="btn btn-secondary" onclick="openBatchPagesModal()">
+                  <i class="fas fa-globe"></i> Batch Enable Pages
+                </button>
+                <button class="btn btn-secondary" onclick="openBatchSecretsModal()">
+                  <i class="fas fa-lock"></i> Batch Add Secrets
+                </button>
+              </div>
+              <div id="account-operations-result" style="margin-top:14px"></div>
+            </div>
+          </div>
+
+        </div>
       </div>
 
       <!-- ── UPLOAD ── -->
@@ -1353,6 +1498,131 @@ body::before {
   </div>
 </div>
 
+<!-- Add Secret Modal -->
+<div class="modal-overlay" id="modal-add-secret">
+  <div class="modal">
+    <div class="modal-header">
+      <i class="fas fa-lock" style="color:var(--accent3)"></i>
+      <h3>Add Repository Secret</h3>
+      <button class="modal-close" onclick="closeModal('modal-add-secret')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Secret Name</label>
+        <input type="text" class="form-input" id="new-secret-name" placeholder="API_KEY" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Secret Value</label>
+        <textarea class="form-textarea" id="new-secret-value" placeholder="Enter secret value..." rows="4"></textarea>
+      </div>
+      <p style="font-size:11px;color:var(--text3);margin-top:8px">
+        <i class="fas fa-info-circle"></i> Secret will be encrypted and stored securely in GitHub Actions.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-secret')">Cancel</button>
+      <button class="btn btn-primary" onclick="addRepositorySecret()"><i class="fas fa-plus"></i> Add Secret</button>
+    </div>
+  </div>
+</div>
+
+<!-- Batch Enable Pages Modal -->
+<div class="modal-overlay" id="modal-batch-pages">
+  <div class="modal" style="width:600px;max-width:95vw">
+    <div class="modal-header">
+      <i class="fas fa-globe" style="color:var(--green)"></i>
+      <h3>Batch Enable GitHub Pages</h3>
+      <button class="modal-close" onclick="closeModal('modal-batch-pages')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Select Repositories</label>
+        <div id="batch-pages-repo-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:8px">
+          <div class="empty-state"><p>Loading repositories...</p></div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Branch</label>
+          <select class="form-select" id="batch-pages-branch">
+            <option value="main">main</option>
+            <option value="gh-pages">gh-pages</option>
+            <option value="master">master</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Path</label>
+          <select class="form-select" id="batch-pages-path">
+            <option value="/">/ (root)</option>
+            <option value="/docs">/docs</option>
+          </select>
+        </div>
+      </div>
+      <div id="batch-pages-selected" style="font-size:12px;color:var(--accent2);margin-top:8px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-batch-pages')">Cancel</button>
+      <button class="btn btn-primary" onclick="executeBatchEnablePages()"><i class="fas fa-globe"></i> Enable Pages</button>
+    </div>
+  </div>
+</div>
+
+<!-- Batch Add Secrets Modal -->
+<div class="modal-overlay" id="modal-batch-secrets">
+  <div class="modal" style="width:600px;max-width:95vw">
+    <div class="modal-header">
+      <i class="fas fa-lock" style="color:var(--accent3)"></i>
+      <h3>Batch Add Secret</h3>
+      <button class="modal-close" onclick="closeModal('modal-batch-secrets')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Secret Name</label>
+        <input type="text" class="form-input" id="batch-secret-name" placeholder="DEPLOY_KEY" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Secret Value</label>
+        <textarea class="form-textarea" id="batch-secret-value" placeholder="Enter secret value..." rows="3"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Select Repositories</label>
+        <div id="batch-secrets-repo-list" style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:8px">
+          <div class="empty-state"><p>Loading repositories...</p></div>
+        </div>
+      </div>
+      <div id="batch-secrets-selected" style="font-size:12px;color:var(--accent2);margin-top:8px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-batch-secrets')">Cancel</button>
+      <button class="btn btn-primary" onclick="executeBatchAddSecrets()"><i class="fas fa-lock"></i> Add to Selected</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Repo Confirmation Modal -->
+<div class="modal-overlay" id="modal-delete-confirm">
+  <div class="modal">
+    <div class="modal-header">
+      <i class="fas fa-exclamation-triangle" style="color:var(--red)"></i>
+      <h3>Delete Repository</h3>
+      <button class="modal-close" onclick="closeModal('modal-delete-confirm')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:16px;color:var(--text2)">
+        This action <strong style="color:var(--red)">cannot be undone</strong>. This will permanently delete the repository <strong id="delete-repo-name" style="color:var(--accent)"></strong>.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Type the repository name to confirm</label>
+        <input type="text" class="form-input" id="delete-confirm-input" placeholder="repository-name">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-delete-confirm')">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDelete()"><i class="fas fa-trash"></i> Delete Repository</button>
+    </div>
+  </div>
+</div>
+
 <!-- Delete Confirm Modal -->
 <div class="modal-overlay" id="modal-delete-confirm">
   <div class="modal" style="width:400px">
@@ -1663,8 +1933,8 @@ document.addEventListener('keydown', e => {
 });
 
 // ─── Tab Routing ──────────────────────────────────────────────────────────────
-const tabTitles = { overview:'Overview', repos:'Repositories', files:'File Browser', actions:'GitHub Actions', issues:'Issues', commits:'Commit History', secrets:'Secrets', upload:'Upload' };
-const tabSubs = { overview:'Dashboard', repos:'All Repos', files:'Editor', actions:'Workflows & Runs', issues:'Tracker', commits:'History', secrets:'Env Variables', upload:'Files & Folders' };
+const tabTitles = { overview:'Overview', repos:'Repositories', files:'File Browser', actions:'GitHub Actions', issues:'Issues', commits:'Commit History', secrets:'Secrets', pages:'GitHub Pages', accounts:'Multi-Account', upload:'Upload' };
+const tabSubs = { overview:'Dashboard', repos:'All Repos', files:'Editor', actions:'Workflows & Runs', issues:'Tracker', commits:'History', secrets:'Env Variables', pages:'Deployment', accounts:'Management', upload:'Files & Folders' };
 
 function showTab(name) {
   document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
@@ -1678,6 +1948,8 @@ function showTab(name) {
   if (name === 'issues' && S.currentRepo) loadIssues('open');
   if (name === 'commits' && S.currentRepo) loadCommits();
   if (name === 'secrets' && S.currentRepo) loadSecrets();
+  if (name === 'pages' && S.currentRepo) checkPagesStatus();
+  if (name === 'accounts') loadCurrentAccountInfo();
 }
 
 // ─── Repo Select ──────────────────────────────────────────────────────────────
@@ -2698,6 +2970,490 @@ async function startUpload2() {
 function upload2Done() {
   document.getElementById('upload2-progress-wrap').style.display = 'none';
   if (U2.mode === 'self' && S.currentRepo) { showTab('files'); loadFiles(); }
+}
+
+// ─── GitHub Pages Functions ────────────────────────────────────────────────────
+
+async function checkPagesStatus() {
+  if (!S.currentRepo) { toast('Select a repository first', 'info'); return; }
+  const container = document.getElementById('pages-status-container');
+  container.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+  
+  const data = await api('/api/pages/status', { repo: S.currentRepo });
+  
+  if (data.enabled) {
+    container.innerHTML = `
+      <div style="padding:20px;background:rgba(0,255,136,0.05);border:1px solid rgba(0,255,136,0.2);border-radius:var(--radius)">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+          <i class="fas fa-check-circle" style="color:var(--green);font-size:24px"></i>
+          <div>
+            <div style="font-size:16px;font-weight:600;color:var(--green)">GitHub Pages Enabled</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:2px">Status: ${data.status || 'Active'}</div>
+          </div>
+        </div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:8px">
+          <strong style="color:var(--text)">Live URL:</strong>
+          <a href="${data.url}" target="_blank" rel="noopener" style="color:var(--accent2);text-decoration:none;word-break:break-all">
+            ${data.url}
+            <i class="fas fa-external-link-alt" style="font-size:10px;margin-left:4px"></i>
+          </a>
+        </div>
+        ${data.source ? `
+          <div style="font-size:12px;color:var(--text3)">
+            <strong>Source:</strong> Branch <code style="background:var(--surface3);padding:2px 6px;border-radius:3px">${data.source.branch}</code>
+            ${data.source.path ? ` / Path <code style="background:var(--surface3);padding:2px 6px;border-radius:3px">${data.source.path}</code>` : ''}
+          </div>
+        ` : ''}
+        ${data.https_enforced ? '<div style="font-size:11px;color:var(--green);margin-top:8px"><i class="fas fa-lock"></i> HTTPS Enforced</div>' : ''}
+      </div>
+    `;
+  } else {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon"><i class="fas fa-globe"></i></div>
+        <p>GitHub Pages is not enabled for this repository</p>
+        <p style="font-size:11px;margin-top:8px">Use the configuration section below to enable it</p>
+      </div>
+    `;
+  }
+}
+
+async function enableGitHubPages() {
+  if (!S.currentRepo) { toast('Select a repository first', 'info'); return; }
+  const branch = document.getElementById('pages-branch-select').value;
+  const path = document.getElementById('pages-path-select').value;
+  
+  const data = await api('/api/pages/enable', {
+    repo: S.currentRepo,
+    branch: branch,
+    path: path
+  });
+  
+  if (data.error) {
+    toast(data.error, 'error');
+  } else {
+    toast('GitHub Pages enabled successfully!', 'success');
+    setTimeout(() => checkPagesStatus(), 1000);
+  }
+}
+
+async function disableGitHubPages() {
+  if (!S.currentRepo) { toast('Select a repository first', 'info'); return; }
+  if (!confirm(`Disable GitHub Pages for ${S.currentRepo}?`)) return;
+  
+  const data = await api('/api/pages/disable', { repo: S.currentRepo });
+  
+  if (data.error) {
+    toast(data.error, 'error');
+  } else {
+    toast('GitHub Pages disabled', 'success');
+    checkPagesStatus();
+  }
+}
+
+async function requestPagesBuild() {
+  if (!S.currentRepo) { toast('Select a repository first', 'info'); return; }
+  const data = await api('/api/pages/build', { repo: S.currentRepo });
+  
+  if (data.error) {
+    toast(data.error, 'error');
+  } else {
+    toast('Build requested successfully', 'success');
+    loadPagesBuilds();
+  }
+}
+
+async function loadPagesBuilds() {
+  if (!S.currentRepo) return;
+  const container = document.getElementById('pages-builds-container');
+  container.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+  
+  const data = await api('/api/pages/builds', { repo: S.currentRepo });
+  
+  if (data.error || !data.builds || !data.builds.length) {
+    container.innerHTML = '<div class="empty-state"><p>No builds found</p></div>';
+    return;
+  }
+  
+  container.innerHTML = data.builds.slice(0, 10).map(b => `
+    <div class="run-item">
+      <div class="run-dot ${b.status}"></div>
+      <div class="run-name">Build #${b.commit ? b.commit.substring(0, 7) : 'N/A'}</div>
+      <div class="run-status status-${b.status}">${b.status}</div>
+      <div class="run-meta">${formatDate(b.created_at || b.updated_at)}</div>
+    </div>
+  `).join('');
+}
+
+// ─── Enhanced Secrets Functions ────────────────────────────────────────────────
+
+function openAddSecretModal() {
+  if (!S.currentRepo) { toast('Select a repository first', 'info'); return; }
+  document.getElementById('new-secret-name').value = '';
+  document.getElementById('new-secret-value').value = '';
+  openModal('modal-add-secret');
+}
+
+async function addRepositorySecret() {
+  if (!S.currentRepo) { toast('Select a repository first', 'info'); return; }
+  const name = document.getElementById('new-secret-name').value.trim().toUpperCase();
+  const value = document.getElementById('new-secret-value').value;
+  
+  if (!name || !value) {
+    toast('Secret name and value are required', 'error');
+    return;
+  }
+  
+  const data = await api('/api/secrets/add', {
+    repo: S.currentRepo,
+    secret_name: name,
+    secret_value: value
+  });
+  
+  if (data.error) {
+    toast(data.error, 'error');
+  } else {
+    toast(`Secret "${name}" added successfully`, 'success');
+    closeModal('modal-add-secret');
+    loadSecrets();
+  }
+}
+
+async function deleteSecretConfirm(secretName) {
+  if (!confirm(`Delete secret "${secretName}"?`)) return;
+  
+  const data = await api('/api/secrets/delete', {
+    repo: S.currentRepo,
+    secret_name: secretName
+  });
+  
+  if (data.error) {
+    toast(data.error, 'error');
+  } else {
+    toast(`Secret "${secretName}" deleted`, 'success');
+    loadSecrets();
+  }
+}
+
+// Update loadSecrets to add delete buttons
+const originalLoadSecrets = loadSecrets;
+async function loadSecrets() {
+  if (!S.currentRepo) {
+    document.getElementById('secrets-container').innerHTML = '<div class="empty-state"><p>Select a repository</p></div>';
+    return;
+  }
+  setLoading(document.getElementById('secrets-container'));
+  const data = await api('/api/secrets', { repo: S.currentRepo });
+  if (data.error) {
+    toast(data.error, 'error');
+    document.getElementById('secrets-container').innerHTML = '<div class="empty-state"><p>Failed to load secrets</p></div>';
+    return;
+  }
+  const secrets = data.secrets || [];
+  if (!secrets.length) {
+    document.getElementById('secrets-container').innerHTML = '<div class="empty-state"><div class="empty-icon"><i class="fas fa-lock"></i></div><p>No secrets configured</p></div>';
+    return;
+  }
+  document.getElementById('secrets-container').innerHTML = secrets.map(s => `
+    <div class="secret-item">
+      <i class="fas fa-key secret-icon"></i>
+      <div class="secret-key">${s.name}</div>
+      <div class="secret-date">Updated ${formatDate(s.updated_at)}</div>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="deleteSecretConfirm('${s.name}')" title="Delete">
+        <i class="fas fa-trash"></i>
+      </button>
+    </div>
+  `).join('');
+}
+
+// ─── Multi-Account Functions ───────────────────────────────────────────────────
+
+// Store alternate account credentials
+const ALT_ACCOUNT = { token: '', username: '' };
+
+function loadCurrentAccountInfo() {
+  if (S.user) {
+    document.getElementById('multi-current-name').textContent = S.user.name || S.user.login;
+    document.getElementById('multi-current-handle').textContent = '@' + S.user.login;
+    const av = document.getElementById('multi-current-avatar');
+    if (S.user.avatar_url) {
+      av.innerHTML = `<img src="${S.user.avatar_url}" alt="avatar">`;
+    } else {
+      av.textContent = (S.user.login || '?')[0].toUpperCase();
+    }
+  }
+}
+
+function toggleOtherAccountToken() {
+  const inp = document.getElementById('other-account-token');
+  const icon = document.getElementById('other-account-token-eye');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  icon.className = `fas fa-eye${inp.type === 'password' ? '' : '-slash'}`;
+}
+
+async function verifyOtherAccount() {
+  const username = document.getElementById('other-account-username').value.trim();
+  const token = document.getElementById('other-account-token').value.trim();
+  
+  if (!username || !token) {
+    toast('Username and token are required', 'error');
+    return;
+  }
+  
+  const resultDiv = document.getElementById('other-account-result');
+  resultDiv.innerHTML = '<div class="spinner"></div> Verifying...';
+  resultDiv.style.display = 'block';
+  
+  const data = await api('/api/accounts/verify', {
+    token: token,
+    username: username
+  });
+  
+  if (data.error) {
+    resultDiv.innerHTML = `<div style="color:var(--red);padding:10px;background:rgba(255,71,87,0.1);border:1px solid rgba(255,71,87,0.3);border-radius:var(--radius)">
+      <i class="fas fa-times-circle"></i> ${data.error}
+    </div>`;
+  } else if (data.warning) {
+    resultDiv.innerHTML = `<div style="color:var(--yellow);padding:10px;background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.3);border-radius:var(--radius)">
+      <i class="fas fa-exclamation-triangle"></i> ${data.warning}
+    </div>`;
+  } else {
+    ALT_ACCOUNT.token = token;
+    ALT_ACCOUNT.username = data.username || username;
+    resultDiv.innerHTML = `<div style="color:var(--green);padding:10px;background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);border-radius:var(--radius)">
+      <i class="fas fa-check-circle"></i> Verified! Account: <strong>@${ALT_ACCOUNT.username}</strong>
+      <div style="margin-top:8px;font-size:11px">You can now use batch operations with this account.</div>
+    </div>`;
+    toast(`Verified account @${ALT_ACCOUNT.username}`, 'success');
+  }
+}
+
+function clearOtherAccount() {
+  document.getElementById('other-account-username').value = '';
+  document.getElementById('other-account-token').value = '';
+  document.getElementById('other-account-result').style.display = 'none';
+  ALT_ACCOUNT.token = '';
+  ALT_ACCOUNT.username = '';
+  toast('Cleared alternate account', 'info');
+}
+
+async function refreshCurrentAccount() {
+  const data = await api('/api/user');
+  if (data.error) {
+    toast(data.error, 'error');
+  } else {
+    S.user = data;
+    setupUserUI(data);
+    loadCurrentAccountInfo();
+    toast('Account refreshed', 'success');
+  }
+}
+
+async function loadAccountRepos() {
+  const target = ALT_ACCOUNT.username || S.username;
+  const resultDiv = document.getElementById('account-operations-result');
+  resultDiv.innerHTML = '<div class="spinner"></div> Loading repositories...';
+  
+  const data = await api('/api/accounts/repos', {
+    target_username: ALT_ACCOUNT.username || null
+  });
+  
+  if (data.error) {
+    resultDiv.innerHTML = `<div style="color:var(--red)"><i class="fas fa-times-circle"></i> ${data.error}</div>`;
+    return;
+  }
+  
+  const repos = data.repos || [];
+  resultDiv.innerHTML = `
+    <div style="margin-top:12px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text)">
+        <i class="fas fa-folder"></i> Repositories for @${target} (${repos.length})
+      </div>
+      <div style="max-height:200px;overflow-y:auto;font-size:12px">
+        ${repos.slice(0, 20).map(r => `
+          <div style="padding:4px 0;color:var(--text2);border-bottom:1px solid rgba(255,255,255,0.03)">
+            ${r.private ? '<i class="fas fa-lock" style="color:var(--accent3);font-size:10px"></i>' : '<i class="fas fa-folder" style="color:var(--accent2);font-size:10px"></i>'}
+            ${r.name}
+            ${r.private ? '<span style="color:var(--accent3);font-size:10px;margin-left:4px">[Private]</span>' : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+async function loadOrganizations() {
+  const resultDiv = document.getElementById('account-operations-result');
+  resultDiv.innerHTML = '<div class="spinner"></div> Loading organizations...';
+  
+  const data = await api('/api/accounts/organizations');
+  
+  if (data.error) {
+    resultDiv.innerHTML = `<div style="color:var(--red)"><i class="fas fa-times-circle"></i> ${data.error}</div>`;
+    return;
+  }
+  
+  const orgs = data.organizations || [];
+  if (!orgs.length) {
+    resultDiv.innerHTML = `<div style="color:var(--text3);margin-top:12px"><i class="fas fa-info-circle"></i> No organizations found</div>`;
+    return;
+  }
+  
+  resultDiv.innerHTML = `
+    <div style="margin-top:12px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text)">
+        <i class="fas fa-building"></i> Organizations (${orgs.length})
+      </div>
+      <div style="max-height:200px;overflow-y:auto;font-size:12px">
+        ${orgs.map(o => `
+          <div style="padding:6px 0;color:var(--text2);border-bottom:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;gap:8px">
+            ${o.avatar_url ? `<img src="${o.avatar_url}" style="width:20px;height:20px;border-radius:4px">` : '<i class="fas fa-building" style="font-size:12px"></i>'}
+            <strong style="color:var(--text)">${o.login}</strong>
+            ${o.description ? `<span style="font-size:11px;color:var(--text3)">— ${o.description}</span>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ─── Batch Operations ──────────────────────────────────────────────────────────
+
+const BATCH = { selectedRepos: [] };
+
+async function openBatchPagesModal() {
+  openModal('modal-batch-pages');
+  const listDiv = document.getElementById('batch-pages-repo-list');
+  listDiv.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+  
+  // Load repos
+  if (!S.repos.length) await loadRepos();
+  
+  BATCH.selectedRepos = [];
+  listDiv.innerHTML = S.repos.map((r, i) => `
+    <div class="form-check" style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.03)">
+      <input type="checkbox" id="batch-repo-${i}" data-repo="${r.name}" onchange="updateBatchSelection()">
+      <label for="batch-repo-${i}" style="flex:1">
+        ${r.private ? '<i class="fas fa-lock" style="color:var(--accent3);font-size:10px"></i>' : '<i class="fas fa-folder" style="color:var(--accent2);font-size:10px"></i>'}
+        ${r.name}
+      </label>
+    </div>
+  `).join('');
+  
+  updateBatchSelection();
+}
+
+function updateBatchSelection() {
+  BATCH.selectedRepos = [];
+  document.querySelectorAll('#batch-pages-repo-list input[type="checkbox"]:checked').forEach(cb => {
+    BATCH.selectedRepos.push(cb.dataset.repo);
+  });
+  const el = document.getElementById('batch-pages-selected');
+  el.textContent = BATCH.selectedRepos.length > 0 
+    ? `${BATCH.selectedRepos.length} repositories selected` 
+    : 'No repositories selected';
+  el.style.color = BATCH.selectedRepos.length > 0 ? 'var(--accent2)' : 'var(--text3)';
+}
+
+async function executeBatchEnablePages() {
+  if (!BATCH.selectedRepos.length) {
+    toast('Select at least one repository', 'error');
+    return;
+  }
+  
+  const branch = document.getElementById('batch-pages-branch').value;
+  const path = document.getElementById('batch-pages-path').value;
+  
+  const repositories = BATCH.selectedRepos.map(repo => ({
+    username: S.username,
+    repo: repo,
+    branch: branch,
+    path: path
+  }));
+  
+  closeModal('modal-batch-pages');
+  toast(`Enabling Pages for ${repositories.length} repositories...`, 'info');
+  
+  const data = await api('/api/batch/enable-pages', { repositories });
+  
+  if (data.error) {
+    toast(data.error, 'error');
+  } else {
+    const success = data.results.filter(r => r.status === 'success' || r.status === 'updated').length;
+    const failed = data.results.filter(r => r.status === 'failed').length;
+    toast(`Pages enabled: ${success} success, ${failed} failed`, success > 0 ? 'success' : 'error');
+  }
+}
+
+async function openBatchSecretsModal() {
+  openModal('modal-batch-secrets');
+  const listDiv = document.getElementById('batch-secrets-repo-list');
+  listDiv.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+  
+  // Load repos
+  if (!S.repos.length) await loadRepos();
+  
+  BATCH.selectedRepos = [];
+  listDiv.innerHTML = S.repos.map((r, i) => `
+    <div class="form-check" style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.03)">
+      <input type="checkbox" id="batch-secret-repo-${i}" data-repo="${r.name}" onchange="updateBatchSecretSelection()">
+      <label for="batch-secret-repo-${i}" style="flex:1">
+        ${r.private ? '<i class="fas fa-lock" style="color:var(--accent3);font-size:10px"></i>' : '<i class="fas fa-folder" style="color:var(--accent2);font-size:10px"></i>'}
+        ${r.name}
+      </label>
+    </div>
+  `).join('');
+  
+  updateBatchSecretSelection();
+}
+
+function updateBatchSecretSelection() {
+  BATCH.selectedRepos = [];
+  document.querySelectorAll('#batch-secrets-repo-list input[type="checkbox"]:checked').forEach(cb => {
+    BATCH.selectedRepos.push(cb.dataset.repo);
+  });
+  const el = document.getElementById('batch-secrets-selected');
+  el.textContent = BATCH.selectedRepos.length > 0 
+    ? `${BATCH.selectedRepos.length} repositories selected` 
+    : 'No repositories selected';
+  el.style.color = BATCH.selectedRepos.length > 0 ? 'var(--accent2)' : 'var(--text3)';
+}
+
+async function executeBatchAddSecrets() {
+  if (!BATCH.selectedRepos.length) {
+    toast('Select at least one repository', 'error');
+    return;
+  }
+  
+  const secretName = document.getElementById('batch-secret-name').value.trim().toUpperCase();
+  const secretValue = document.getElementById('batch-secret-value').value;
+  
+  if (!secretName || !secretValue) {
+    toast('Secret name and value are required', 'error');
+    return;
+  }
+  
+  const repositories = BATCH.selectedRepos.map(repo => ({
+    username: S.username,
+    repo: repo
+  }));
+  
+  closeModal('modal-batch-secrets');
+  toast(`Adding secret "${secretName}" to ${repositories.length} repositories...`, 'info');
+  
+  const data = await api('/api/batch/add-secrets', {
+    repositories,
+    secret_name: secretName,
+    secret_value: secretValue
+  });
+  
+  if (data.error) {
+    toast(data.error, 'error');
+  } else {
+    const success = data.results.filter(r => r.status === 'success').length;
+    const failed = data.results.filter(r => r.status === 'failed').length;
+    toast(`Secret added: ${success} success, ${failed} failed`, success > 0 ? 'success' : 'error');
+  }
 }
 
 </script>
