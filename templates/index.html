@@ -662,7 +662,10 @@ body::before {
 .secret-date { font-size: 11px; color: var(--text3); }
 .secret-icon { font-size: 12px; color: var(--accent3); }
 
-/* ── Responsive tweaks ── */
+.file-row-input:focus { background: rgba(0,212,255,0.04) !important; }
+.file-row-input::placeholder { color: var(--text3); }
+
+/* Responsive tweaks
 @media (max-width: 900px) {
   .sidebar { width: 52px; min-width: 52px; }
   .nav-item span, .nav-label, .user-info, .sidebar-header h2, .btn-logout span { display: none; }
@@ -973,21 +976,87 @@ body::before {
 
 <!-- Create Repo Modal -->
 <div class="modal-overlay" id="modal-create-repo">
-  <div class="modal">
+  <div class="modal" style="width:560px;max-width:95vw">
     <div class="modal-header">
       <i class="fas fa-folder-plus" style="color:var(--accent2)"></i>
       <h3>Create Repository</h3>
       <button class="modal-close" onclick="closeModal('modal-create-repo')">&times;</button>
     </div>
-    <div class="modal-body">
+    <div class="modal-body" style="padding:20px 24px">
+
+      <!-- Repo Name -->
       <div class="form-group">
-        <label class="form-label">Repository Name</label>
-        <input type="text" class="form-input" id="new-repo-name" placeholder="my-awesome-project">
+        <label class="form-label" style="display:flex;align-items:center;gap:8px">
+          Repository Name
+          <span style="font-size:10px;color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">(leave blank for auto-generated name)</span>
+        </label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" class="form-input" id="new-repo-name" placeholder="my-awesome-project" style="flex:1" oninput="updateRepoNamePreview()">
+          <button class="btn btn-secondary btn-sm" onclick="generateRepoName()" title="Generate random name" style="flex-shrink:0;white-space:nowrap">
+            <i class="fas fa-shuffle"></i> Auto
+          </button>
+        </div>
+        <div id="repo-name-preview" style="margin-top:6px;font-size:11px;color:var(--accent2);display:none">
+          <i class="fas fa-link" style="font-size:10px"></i> github.com/<span id="rp-user"></span>/<span id="rp-name"></span>
+        </div>
       </div>
+
+      <!-- Description -->
       <div class="form-group">
         <label class="form-label">Description</label>
         <input type="text" class="form-input" id="new-repo-desc" placeholder="What's this project about?">
       </div>
+
+      <!-- Files Section -->
+      <div class="form-group">
+        <label class="form-label" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Initial Files <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">(min 2 required)</span></span>
+          <button class="btn btn-secondary btn-sm" onclick="addFileRow()" style="font-size:11px;padding:3px 10px">
+            <i class="fas fa-plus"></i> Add File
+          </button>
+        </label>
+        <div id="file-rows-container" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+
+      <!-- Workflow YML Section -->
+      <div class="form-group" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <label class="form-label" style="margin:0;display:flex;align-items:center;gap:8px">
+            <i class="fas fa-bolt" style="color:var(--yellow)"></i>
+            GitHub Actions Workflow
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2)">
+            <input type="checkbox" id="yml-enabled" onchange="toggleYmlSection()" checked style="accent-color:var(--accent2)">
+            Include workflow
+          </label>
+        </div>
+        <div id="yml-section">
+          <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px">
+            <div style="flex:1">
+              <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Workflow filename</div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input type="text" class="form-input" id="yml-filename" placeholder="workflow" style="flex:1" oninput="updateYmlPathPreview()" value="workflow">
+                <span style="font-size:12px;color:var(--text3);white-space:nowrap">.yml</span>
+              </div>
+            </div>
+            <div style="flex:0 0 auto;padding-top:20px">
+              <button class="btn btn-secondary btn-sm" onclick="toggleYmlCustomize()" id="yml-customize-btn">
+                <i class="fas fa-pen"></i> Customize
+              </button>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--accent2);margin-bottom:10px;padding:6px 10px;background:rgba(0,212,255,0.05);border-radius:4px;border:1px solid rgba(0,212,255,0.1)">
+            <i class="fas fa-folder-tree" style="font-size:10px"></i>
+            Path: <span id="yml-path-preview" style="font-family:var(--font-mono)">.github/workflows/workflow.yml</span>
+          </div>
+          <div id="yml-content-section" style="display:none">
+            <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Workflow Content</div>
+            <textarea class="form-textarea" id="yml-content" rows="8" style="font-family:var(--font-mono);font-size:12px;line-height:1.6" placeholder="Leave empty for a blank workflow file..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gitignore + License -->
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Gitignore Template</label>
@@ -1010,14 +1079,16 @@ body::before {
           </select>
         </div>
       </div>
+
       <div class="form-check">
         <input type="checkbox" id="new-repo-private">
         <label for="new-repo-private">Private repository</label>
       </div>
+
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-create-repo')">Cancel</button>
-      <button class="btn btn-primary" onclick="createRepo()"><i class="fas fa-plus"></i> Create</button>
+      <button class="btn btn-primary" onclick="createRepo()"><i class="fas fa-plus"></i> Create Repository</button>
     </div>
   </div>
 </div>
@@ -1382,23 +1453,177 @@ function selectAndNavigate(name) {
 }
 
 // ─── Create / Delete Repo ────────────────────────────────────────────────────
-function openCreateRepo() { openModal('modal-create-repo'); setTimeout(() => document.getElementById('new-repo-name').focus(), 100); }
+
+// Auto-name adjectives + nouns
+const _adj = ['silent','cosmic','rapid','brave','smart','dark','bright','swift','lucky','giant','neon','bold','calm','epic','fresh'];
+const _noun = ['falcon','engine','matrix','orbit','beacon','forge','nexus','stream','vault','proxy','relay','agent','rover','pulse','node'];
+function generateRepoName() {
+  const adj = _adj[Math.floor(Math.random()*_adj.length)];
+  const noun = _noun[Math.floor(Math.random()*_noun.length)];
+  const num = Math.floor(Math.random()*900)+100;
+  document.getElementById('new-repo-name').value = `${adj}-${noun}-${num}`;
+  updateRepoNamePreview();
+}
+
+function updateRepoNamePreview() {
+  const name = document.getElementById('new-repo-name').value.trim();
+  const prev = document.getElementById('repo-name-preview');
+  if (name) {
+    prev.style.display = 'block';
+    document.getElementById('rp-user').textContent = S.username || 'you';
+    document.getElementById('rp-name').textContent = name;
+  } else { prev.style.display = 'none'; }
+}
+
+// File rows management
+let _fileRowId = 0;
+function addFileRow(defaultName = '') {
+  _fileRowId++;
+  const id = _fileRowId;
+  const container = document.getElementById('file-rows-container');
+  const row = document.createElement('div');
+  row.id = `file-row-${id}`;
+  row.style.cssText = 'display:flex;gap:8px;align-items:center';
+  row.innerHTML = `
+    <div style="flex:1;display:flex;align-items:center;gap:0;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <i class="fas fa-file-code" style="padding:0 10px;color:var(--text3);font-size:12px;flex-shrink:0"></i>
+      <input type="text" class="file-row-input" data-id="${id}" value="${defaultName}"
+        style="flex:1;background:none;border:none;outline:none;color:var(--text);font-family:var(--font-mono);font-size:12px;padding:9px 10px 9px 0"
+        placeholder="filename.py">
+    </div>
+    <button onclick="removeFileRow(${id})" class="btn btn-danger btn-sm btn-icon" title="Remove" style="flex-shrink:0">
+      <i class="fas fa-minus"></i>
+    </button>`;
+  container.appendChild(row);
+  // focus new input
+  setTimeout(() => row.querySelector('input').focus(), 50);
+  updateRemoveButtons();
+}
+
+function removeFileRow(id) {
+  const el = document.getElementById(`file-row-${id}`);
+  if (el) el.remove();
+  updateRemoveButtons();
+}
+
+function updateRemoveButtons() {
+  const rows = document.querySelectorAll('#file-rows-container > div');
+  rows.forEach((r, i) => {
+    const btn = r.querySelector('button');
+    if (btn) btn.disabled = rows.length <= 2;
+  });
+}
+
+function getFileRows() {
+  return Array.from(document.querySelectorAll('.file-row-input'))
+    .map(i => i.value.trim()).filter(Boolean);
+}
+
+// YML helpers
+function toggleYmlSection() {
+  const enabled = document.getElementById('yml-enabled').checked;
+  document.getElementById('yml-section').style.display = enabled ? 'block' : 'none';
+}
+
+function toggleYmlCustomize() {
+  const sec = document.getElementById('yml-content-section');
+  const btn = document.getElementById('yml-customize-btn');
+  const open = sec.style.display !== 'none';
+  sec.style.display = open ? 'none' : 'block';
+  btn.innerHTML = open ? '<i class="fas fa-pen"></i> Customize' : '<i class="fas fa-eye-slash"></i> Hide';
+}
+
+function updateYmlPathPreview() {
+  const name = (document.getElementById('yml-filename').value.trim() || 'workflow').replace(/\.yml$/i,'');
+  document.getElementById('yml-path-preview').textContent = `.github/workflows/${name}.yml`;
+}
+
+function resetCreateRepoModal() {
+  document.getElementById('new-repo-name').value = '';
+  document.getElementById('new-repo-desc').value = '';
+  document.getElementById('new-repo-private').checked = false;
+  document.getElementById('new-repo-gitignore').value = '';
+  document.getElementById('new-repo-license').value = '';
+  document.getElementById('repo-name-preview').style.display = 'none';
+  document.getElementById('yml-filename').value = 'workflow';
+  document.getElementById('yml-content').value = '';
+  document.getElementById('yml-enabled').checked = true;
+  document.getElementById('yml-section').style.display = 'block';
+  document.getElementById('yml-content-section').style.display = 'none';
+  document.getElementById('yml-customize-btn').innerHTML = '<i class="fas fa-pen"></i> Customize';
+  updateYmlPathPreview();
+  // Reset file rows to 2 default
+  document.getElementById('file-rows-container').innerHTML = '';
+  _fileRowId = 0;
+  addFileRow('README.md');
+  addFileRow('');
+}
+
+function openCreateRepo() {
+  resetCreateRepoModal();
+  openModal('modal-create-repo');
+  setTimeout(() => document.getElementById('new-repo-name').focus(), 150);
+}
 
 async function createRepo() {
-  const name = document.getElementById('new-repo-name').value.trim();
-  if (!name) { toast('Repository name is required', 'error'); return; }
+  // Resolve repo name
+  let name = document.getElementById('new-repo-name').value.trim();
+  if (!name) {
+    // auto-generate if blank
+    const adj = _adj[Math.floor(Math.random()*_adj.length)];
+    const noun = _noun[Math.floor(Math.random()*_noun.length)];
+    const num = Math.floor(Math.random()*900)+100;
+    name = `${adj}-${noun}-${num}`;
+  }
+
+  // Validate files: need at least 2
+  const files = getFileRows();
+  if (files.length < 2) { toast('Add at least 2 file names', 'error'); return; }
+  const dupes = files.filter((f, i) => files.indexOf(f) !== i);
+  if (dupes.length) { toast(`Duplicate filename: ${dupes[0]}`, 'error'); return; }
+
+  // Create the repo
   const data = await api('/api/repos/create', {
-    name, description: document.getElementById('new-repo-desc').value,
+    name,
+    description: document.getElementById('new-repo-desc').value,
     private: document.getElementById('new-repo-private').checked,
     gitignore_template: document.getElementById('new-repo-gitignore').value,
     license_template: document.getElementById('new-repo-license').value
   });
   if (data.error) { toast(data.error, 'error'); return; }
+
   closeModal('modal-create-repo');
-  toast(`Repository "${name}" created!`, 'success');
+  toast(`Repository "${name}" created! Creating files...`, 'success');
   loadRepos();
-  document.getElementById('new-repo-name').value = '';
-  document.getElementById('new-repo-desc').value = '';
+
+  // Create initial files (with small delay for repo to be ready)
+  await new Promise(r => setTimeout(r, 1200));
+
+  // Determine yml filename & content
+  const ymlEnabled = document.getElementById('yml-enabled').checked;
+  const ymlFilename = (document.getElementById('yml-filename').value.trim().replace(/\.yml$/i,'') || 'workflow');
+  const ymlPath = `.github/workflows/${ymlFilename}.yml`;
+  const ymlContent = document.getElementById('yml-content').value;
+
+  // Create regular files
+  let created = 0, failed = [];
+  for (const fname of files) {
+    const res = await api('/api/files/save', {
+      repo: name, path: fname, content: '', message: `Add ${fname}`, sha: null
+    });
+    if (res.error) failed.push(fname); else created++;
+  }
+
+  // Create yml file if enabled
+  if (ymlEnabled) {
+    const res = await api('/api/files/save', {
+      repo: name, path: ymlPath, content: ymlContent, message: `Add ${ymlPath}`, sha: null
+    });
+    if (res.error) failed.push(ymlPath); else created++;
+  }
+
+  if (failed.length) toast(`⚠ Couldn't create: ${failed.join(', ')}`, 'error');
+  else toast(`✓ ${created} file(s) created in "${name}"`, 'success');
 }
 
 function promptDelete(name) {
