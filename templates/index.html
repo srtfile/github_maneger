@@ -665,6 +665,27 @@ body::before {
 .file-row-input:focus { background: rgba(0,212,255,0.04) !important; }
 .file-row-input::placeholder { color: var(--text3); }
 
+/* ── Rename inline ── */
+.rename-input {
+  background: var(--surface3);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 6px;
+  outline: none;
+  width: 120px;
+  box-shadow: 0 0 0 2px rgba(0,212,255,0.15);
+}
+.repo-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--accent2);
+  text-decoration: none; opacity: 0.75;
+  transition: opacity 0.15s;
+}
+.repo-link:hover { opacity: 1; text-decoration: underline; }
+
 /* Responsive tweaks
 @media (max-width: 900px) {
   .sidebar { width: 52px; min-width: 52px; }
@@ -855,6 +876,7 @@ body::before {
               <h3 style="font-size:12px">Explorer</h3>
               <div class="card-actions">
                 <button class="btn btn-secondary btn-sm btn-icon" onclick="loadFiles()" title="Refresh"><i class="fas fa-sync"></i></button>
+                <button class="btn btn-secondary btn-sm btn-icon" onclick="newFolderDialog()" title="New folder"><i class="fas fa-folder-plus"></i></button>
                 <button class="btn btn-primary btn-sm btn-icon" onclick="newFileDialog()" title="New file"><i class="fas fa-plus"></i></button>
               </div>
             </div>
@@ -1205,6 +1227,57 @@ body::before {
 <!-- Upload File (hidden input) -->
 <input type="file" id="upload-input" style="display:none" onchange="handleFileUpload(event)">
 
+<!-- Rename File Modal -->
+<div class="modal-overlay" id="modal-rename-file">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <i class="fas fa-pen" style="color:var(--accent)"></i>
+      <h3>Rename File</h3>
+      <button class="modal-close" onclick="closeModal('modal-rename-file')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Current Name</label>
+        <div style="padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text3)" id="rename-current-name"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">New Name / Path</label>
+        <input type="text" class="form-input" id="rename-new-name" placeholder="new-filename.py">
+        <div style="font-size:11px;color:var(--text3);margin-top:5px"><i class="fas fa-info-circle"></i> Renaming creates a new file with the same content and deletes the old one.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-rename-file')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmRename()"><i class="fas fa-check"></i> Rename</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Folder Modal -->
+<div class="modal-overlay" id="modal-new-folder">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <i class="fas fa-folder-plus" style="color:var(--yellow)"></i>
+      <h3>New Subfolder</h3>
+      <button class="modal-close" onclick="closeModal('modal-new-folder')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Folder Name</label>
+        <input type="text" class="form-input" id="new-folder-name" placeholder="my-folder">
+        <div style="font-size:11px;color:var(--text3);margin-top:5px"><i class="fas fa-info-circle"></i> A <code style="font-size:11px;color:var(--accent2)">.gitkeep</code> file will be placed inside so GitHub tracks the folder.</div>
+      </div>
+      <div id="folder-path-preview" style="display:none;font-size:11px;color:var(--accent2);padding:6px 10px;background:rgba(0,212,255,0.05);border-radius:4px;border:1px solid rgba(0,212,255,0.1)">
+        <i class="fas fa-folder-tree" style="font-size:10px"></i> Path: <span id="folder-path-value" style="font-family:var(--font-mono)"></span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-new-folder')">Cancel</button>
+      <button class="btn btn-success" onclick="confirmNewFolder()"><i class="fas fa-folder-plus"></i> Create Folder</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast container -->
 <div id="toast-container"></div>
 
@@ -1408,7 +1481,12 @@ function renderRepos(repos) {
         ${r.private ? '<i class="fas fa-lock" style="color:var(--accent3)"></i>' : '<i class="fas fa-folder" style="color:var(--accent2)"></i>'}
       </div>
       <div class="repo-details">
-        <div class="rname">${r.name}</div>
+        <div class="rname" style="display:flex;align-items:center;gap:8px">
+          ${r.name}
+          <a class="repo-link" href="https://github.com/${S.username}/${r.name}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open on GitHub">
+            <i class="fas fa-arrow-up-right-from-square" style="font-size:10px"></i>
+          </a>
+        </div>
         <div class="rdesc">${r.description || 'No description'}</div>
       </div>
       <div class="repo-meta">
@@ -1423,7 +1501,12 @@ function renderRepos(repos) {
     <div class="repo-item" onclick="selectAndNavigate('${r.name}')">
       <div class="repo-icon">${r.private ? '<i class="fas fa-lock" style="color:var(--accent3)"></i>' : '<i class="fas fa-folder" style="color:var(--accent2)"></i>'}</div>
       <div class="repo-details">
-        <div class="rname">${r.name}</div>
+        <div class="rname" style="display:flex;align-items:center;gap:8px">
+          ${r.name}
+          <a class="repo-link" href="https://github.com/${S.username}/${r.name}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open on GitHub">
+            <i class="fas fa-arrow-up-right-from-square" style="font-size:10px"></i>
+          </a>
+        </div>
         <div class="rdesc">${r.description || 'No description'}</div>
       </div>
       <div class="repo-meta">
@@ -1663,7 +1746,10 @@ async function loadFiles(path) {
       <span class="file-icon">${fileIcon(item.name, item.type)}</span>
       <span class="file-name">${item.name}</span>
       <span class="file-size">${formatBytes(item.size)}</span>
-      ${item.type === 'file' ? `<button class="btn btn-danger btn-sm btn-icon" style="padding:2px 6px;font-size:10px" onclick="event.stopPropagation();deleteFile('${item.path}','${item.sha}','${item.name}')" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
+      ${item.type === 'file' ? `
+        <button class="btn btn-secondary btn-sm btn-icon" style="padding:2px 6px;font-size:10px" onclick="event.stopPropagation();openRenameModal('${item.path}','${item.sha}','${item.name}')" title="Rename"><i class="fas fa-pen"></i></button>
+        <button class="btn btn-danger btn-sm btn-icon" style="padding:2px 6px;font-size:10px" onclick="event.stopPropagation();deleteFile('${item.path}','${item.sha}','${item.name}')" title="Delete"><i class="fas fa-trash"></i></button>
+      ` : ''}
     </div>`).join('');
   updateBreadcrumb();
 }
@@ -1892,6 +1978,101 @@ async function loadSecrets() {
       <span class="secret-key">${s.name}</span>
       <span class="secret-date">Updated ${formatDate(s.updated_at)}</span>
     </div>`).join('');
+}
+
+// ─── Rename File ─────────────────────────────────────────────────────────────
+let _renameTarget = null;
+
+function openRenameModal(path, sha, name) {
+  _renameTarget = { path, sha, name };
+  document.getElementById('rename-current-name').textContent = path;
+  document.getElementById('rename-new-name').value = name;
+  openModal('modal-rename-file');
+  setTimeout(() => {
+    const inp = document.getElementById('rename-new-name');
+    inp.focus();
+    // Select just the base name without extension for convenience
+    const dot = name.lastIndexOf('.');
+    inp.setSelectionRange(0, dot > 0 ? dot : name.length);
+  }, 120);
+}
+
+async function confirmRename() {
+  if (!_renameTarget) return;
+  const rawNew = document.getElementById('rename-new-name').value.trim();
+  if (!rawNew) { toast('New name required', 'error'); return; }
+  // Build full new path (keep parent dir)
+  const parentDir = _renameTarget.path.includes('/') ? _renameTarget.path.substring(0, _renameTarget.path.lastIndexOf('/') + 1) : '';
+  // If user typed a full path (contains /) use it as-is, otherwise prepend parent
+  const newPath = rawNew.includes('/') ? rawNew : parentDir + rawNew;
+  if (newPath === _renameTarget.path) { toast('Name unchanged', 'info'); closeModal('modal-rename-file'); return; }
+
+  // 1. Read current content
+  const getRes = await api('/api/files/get', { repo: S.currentRepo, path: _renameTarget.path });
+  if (getRes.error) { toast('Could not read file: ' + getRes.error, 'error'); return; }
+
+  // 2. Create file at new path
+  const saveRes = await api('/api/files/save', {
+    repo: S.currentRepo, path: newPath,
+    content: getRes.content,
+    message: `Rename ${_renameTarget.path} → ${newPath}`,
+    sha: null
+  });
+  if (saveRes.error) { toast('Could not create new file: ' + saveRes.error, 'error'); return; }
+
+  // 3. Delete old file
+  const delRes = await api('/api/files/delete', {
+    repo: S.currentRepo, path: _renameTarget.path,
+    sha: _renameTarget.sha,
+    message: `Rename ${_renameTarget.path} → ${newPath}`
+  });
+  if (delRes.error) { toast('Old file not removed: ' + delRes.error, 'error'); }
+
+  closeModal('modal-rename-file');
+  toast(`Renamed to "${newPath}"`, 'success');
+  if (S.currentFilePath === _renameTarget.path) {
+    S.currentFilePath = newPath;
+    document.getElementById('editor-filename').textContent = newPath;
+  }
+  _renameTarget = null;
+  loadFiles();
+}
+
+// ─── New Subfolder ────────────────────────────────────────────────────────────
+function newFolderDialog() {
+  if (!S.currentRepo) { toast('Select a repository first', 'info'); return; }
+  document.getElementById('new-folder-name').value = '';
+  document.getElementById('folder-path-preview').style.display = 'none';
+  openModal('modal-new-folder');
+  setTimeout(() => document.getElementById('new-folder-name').focus(), 100);
+}
+
+document.addEventListener('input', e => {
+  if (e.target.id === 'new-folder-name') {
+    const name = e.target.value.trim();
+    const prev = document.getElementById('folder-path-preview');
+    if (name) {
+      const base = S.currentPath ? S.currentPath + '/' : '';
+      document.getElementById('folder-path-value').textContent = base + name + '/.gitkeep';
+      prev.style.display = 'block';
+    } else { prev.style.display = 'none'; }
+  }
+});
+
+async function confirmNewFolder() {
+  const name = document.getElementById('new-folder-name').value.trim();
+  if (!name) { toast('Folder name required', 'error'); return; }
+  if (/[<>:"\\|?*]/.test(name)) { toast('Invalid folder name characters', 'error'); return; }
+  const base = S.currentPath ? S.currentPath + '/' : '';
+  const gitkeepPath = base + name + '/.gitkeep';
+  const data = await api('/api/files/save', {
+    repo: S.currentRepo, path: gitkeepPath,
+    content: '', message: `Create folder ${name}`, sha: null
+  });
+  if (data.error) { toast(data.error, 'error'); return; }
+  closeModal('modal-new-folder');
+  toast(`Folder "${name}" created!`, 'success');
+  loadFiles();
 }
 
 // ─── Close modals on overlay click ───────────────────────────────────────────
