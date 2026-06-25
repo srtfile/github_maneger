@@ -775,6 +775,10 @@ body::before {
         <span class="nav-icon"><i class="fas fa-lock"></i></span>
         <span>Secrets</span>
       </div>
+      <div class="nav-item" onclick="showTab('upload')">
+        <span class="nav-icon"><i class="fas fa-cloud-upload-alt"></i></span>
+        <span>Upload</span>
+      </div>
     </div>
     <div class="sidebar-footer">
       <button class="btn-logout" onclick="logout()">
@@ -988,6 +992,155 @@ body::before {
         <p style="font-size:11px;color:var(--text3);margin-top:10px;padding:0 4px">
           <i class="fas fa-info-circle"></i> Secret values are encrypted and cannot be retrieved — only names are visible.
         </p>
+      </div>
+
+      <!-- ── UPLOAD ── -->
+      <div class="tab-panel" id="tab-upload">
+        <div style="max-width:700px;margin:0 auto">
+
+          <!-- Account selector -->
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-header">
+              <i class="fas fa-user-circle" style="color:var(--accent2)"></i>
+              <h3>Upload Account</h3>
+            </div>
+            <div style="padding:16px 20px">
+              <div style="display:flex;gap:10px;margin-bottom:14px">
+                <button class="btn" id="acct-self-btn" onclick="setUploadAccount('self')"
+                  style="flex:1;background:rgba(0,212,255,0.15);color:var(--accent);border-color:var(--accent)">
+                  <i class="fas fa-user"></i> My Account
+                </button>
+                <button class="btn btn-secondary" id="acct-other-btn" onclick="setUploadAccount('other')" style="flex:1">
+                  <i class="fas fa-user-plus"></i> Other Account
+                </button>
+              </div>
+              <div id="other-account-fields" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
+                <div style="font-size:11px;color:var(--accent2);margin-bottom:12px;display:flex;align-items:center;gap:6px">
+                  <i class="fas fa-key"></i> Enter the target GitHub account credentials
+                </div>
+                <div class="form-row" style="margin-bottom:10px">
+                  <div>
+                    <label class="form-label">GitHub Username</label>
+                    <input type="text" class="form-input" id="upload-other-username" placeholder="target-username">
+                  </div>
+                  <div>
+                    <label class="form-label">Personal Access Token</label>
+                    <div style="position:relative">
+                      <input type="password" class="form-input" id="upload-other-token" placeholder="ghp_xxxxxxxxxxxx" style="padding-right:36px">
+                      <button onclick="toggleOtherToken()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer">
+                        <i class="fas fa-eye" id="other-token-eye"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div>
+                    <label class="form-label">Target Repository</label>
+                    <input type="text" class="form-input" id="upload-other-repo" placeholder="repo-name">
+                  </div>
+                  <div style="display:flex;align-items:flex-end">
+                    <button class="btn btn-secondary" style="width:100%" onclick="verifyOtherAccount()">
+                      <i class="fas fa-check-circle"></i> Verify Access
+                    </button>
+                  </div>
+                </div>
+                <div id="other-account-status" style="margin-top:10px;font-size:12px;display:none"></div>
+              </div>
+              <div style="margin-top:10px;font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px">
+                <i class="fas fa-info-circle"></i>
+                Uploading to: <span id="acct-summary-text" style="color:var(--accent2);font-weight:600">My account / current repo</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Drop Zone + file picker -->
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-header">
+              <i class="fas fa-folder-open" style="color:var(--yellow)"></i>
+              <h3>Select Files / Folder</h3>
+            </div>
+            <div style="padding:16px 20px">
+              <div id="upload2-dropzone"
+                style="border:2px dashed var(--border2);border-radius:12px;padding:36px 20px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:14px"
+                ondragover="upload2DzOver(event)" ondragleave="upload2DzLeave(event)" ondrop="upload2DzDrop(event)"
+                onclick="document.getElementById('upload2-multi-input').click()">
+                <i class="fas fa-cloud-upload-alt" style="font-size:36px;color:var(--accent2);opacity:0.7;display:block;margin-bottom:12px"></i>
+                <div style="font-size:14px;color:var(--text2);margin-bottom:6px">Drop files or folders here, or <span style="color:var(--accent);text-decoration:underline">click to browse</span></div>
+                <div style="font-size:11px;color:var(--text3)">Preserves folder structure &middot; Handles <code style="color:var(--accent2)">.github/workflows/*.yml</code> &middot; Hidden files included</div>
+              </div>
+              <div style="display:flex;gap:8px;margin-bottom:14px">
+                <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('upload2-multi-input').click()">
+                  <i class="fas fa-file"></i> Pick Files
+                </button>
+                <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('upload2-folder-input').click()">
+                  <i class="fas fa-folder-open"></i> Pick Folder
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="clearUpload2Queue()" id="upload2-clear-btn" style="display:none">
+                  <i class="fas fa-times"></i> Clear
+                </button>
+              </div>
+              <div style="margin-bottom:10px">
+                <label class="form-label">Upload Destination (base path in repo)</label>
+                <div style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:7px 12px">
+                  <i class="fas fa-folder" style="color:var(--accent2);font-size:11px"></i>
+                  <input type="text" id="upload2-base-path" placeholder="/ (repo root)" value=""
+                    style="background:none;border:none;outline:none;color:var(--text);font-family:var(--font-mono);font-size:12px;flex:1">
+                </div>
+              </div>
+              <div>
+                <label class="form-label">Commit Message</label>
+                <input type="text" class="form-input" id="upload2-commit-msg" value="Upload files via GitHub Manager Pro">
+              </div>
+            </div>
+          </div>
+
+          <!-- Queue -->
+          <div class="card" id="upload2-queue-card" style="margin-bottom:16px;display:none">
+            <div class="card-header">
+              <i class="fas fa-list" style="color:var(--accent2)"></i>
+              <h3>Upload Queue</h3>
+              <div class="card-actions">
+                <span id="upload2-queue-count" style="background:var(--accent2);color:white;border-radius:10px;padding:2px 10px;font-size:11px"></span>
+              </div>
+            </div>
+            <div id="upload2-queue-list" style="max-height:280px;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:4px"></div>
+          </div>
+
+          <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-bottom:16px">
+            <div style="font-size:11px;color:var(--text3)" id="upload2-summary-label"></div>
+            <button class="btn btn-primary" id="upload2-start-btn" onclick="startUpload2()" disabled style="padding:10px 24px">
+              <i class="fas fa-cloud-upload-alt"></i> Upload All
+            </button>
+          </div>
+
+          <!-- Progress -->
+          <div id="upload2-progress-wrap" style="display:none" class="card">
+            <div class="card-header">
+              <i class="fas fa-spinner fa-spin" style="color:var(--accent)" id="upload2-prog-icon"></i>
+              <h3 id="upload2-prog-title">Uploading...</h3>
+            </div>
+            <div style="padding:16px 20px">
+              <div style="margin-bottom:14px">
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:6px">
+                  <span id="upload2-prog-label">Preparing...</span>
+                  <span id="upload2-prog-pct">0%</span>
+                </div>
+                <div style="height:8px;background:var(--surface3);border-radius:4px;overflow:hidden">
+                  <div id="upload2-prog-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:4px;transition:width 0.3s"></div>
+                </div>
+              </div>
+              <div id="upload2-log"
+                style="max-height:240px;overflow-y:auto;font-size:11px;font-family:var(--font-mono);background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px;display:flex;flex-direction:column;gap:4px">
+              </div>
+              <div style="margin-top:14px;display:flex;justify-content:flex-end">
+                <button class="btn btn-success" id="upload2-done-btn" onclick="upload2Done()" style="display:none">
+                  <i class="fas fa-check"></i> Done - View Files
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
 
     </div><!-- /content -->
@@ -1228,6 +1381,9 @@ body::before {
 <input type="file" id="upload-input" style="display:none" onchange="handleFileUpload(event)">
 <input type="file" id="upload-folder-input" style="display:none" webkitdirectory multiple onchange="handleFolderUpload(event)">
 <input type="file" id="upload-multi-input" style="display:none" multiple onchange="handleMultiFileUpload(event)">
+<!-- Upload2 (standalone tab) inputs -->
+<input type="file" id="upload2-multi-input" style="display:none" multiple onchange="upload2HandleFiles(event.target.files)">
+<input type="file" id="upload2-folder-input" style="display:none" webkitdirectory multiple onchange="upload2HandleFiles(event.target.files)">
 
 <!-- ── UPLOAD MODAL ── -->
 <div class="modal-overlay" id="modal-upload">
@@ -1507,8 +1663,8 @@ document.addEventListener('keydown', e => {
 });
 
 // ─── Tab Routing ──────────────────────────────────────────────────────────────
-const tabTitles = { overview:'Overview', repos:'Repositories', files:'File Browser', actions:'GitHub Actions', issues:'Issues', commits:'Commit History', secrets:'Secrets' };
-const tabSubs = { overview:'Dashboard', repos:'All Repos', files:'Editor', actions:'Workflows & Runs', issues:'Tracker', commits:'History', secrets:'Env Variables' };
+const tabTitles = { overview:'Overview', repos:'Repositories', files:'File Browser', actions:'GitHub Actions', issues:'Issues', commits:'Commit History', secrets:'Secrets', upload:'Upload' };
+const tabSubs = { overview:'Dashboard', repos:'All Repos', files:'Editor', actions:'Workflows & Runs', issues:'Tracker', commits:'History', secrets:'Env Variables', upload:'Files & Folders' };
 
 function showTab(name) {
   document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
@@ -2181,6 +2337,369 @@ async function confirmNewFolder() {
 document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
+
+// ─── Upload2 (Standalone Tab) ────────────────────────────────────────────────
+
+const U2 = {
+  files: [],          // [{file, repoPath}]
+  mode: 'self',       // 'self' | 'other'
+  otherToken: '',
+  otherUsername: '',
+  otherRepo: '',
+  otherVerified: false
+};
+
+// -- Account switching --
+function setUploadAccount(mode) {
+  U2.mode = mode;
+  const selfBtn = document.getElementById('acct-self-btn');
+  const otherBtn = document.getElementById('acct-other-btn');
+  const fields = document.getElementById('other-account-fields');
+  if (mode === 'self') {
+    selfBtn.style.cssText = 'flex:1;background:rgba(0,212,255,0.15);color:var(--accent);border-color:var(--accent)';
+    otherBtn.className = 'btn btn-secondary';
+    otherBtn.style.flex = '1';
+    fields.style.display = 'none';
+    updateAcctSummary();
+  } else {
+    otherBtn.style.cssText = 'flex:1;background:rgba(124,58,237,0.15);color:#a78bfa;border-color:#a78bfa';
+    selfBtn.className = 'btn btn-secondary';
+    selfBtn.style.flex = '1';
+    fields.style.display = 'block';
+    updateAcctSummary();
+  }
+}
+
+function toggleOtherToken() {
+  const inp = document.getElementById('upload-other-token');
+  const eye = document.getElementById('other-token-eye');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  eye.className = 'fas fa-eye' + (inp.type === 'password' ? '' : '-slash');
+}
+
+function updateAcctSummary() {
+  const el = document.getElementById('acct-summary-text');
+  if (U2.mode === 'self') {
+    const repo = S.currentRepo || '(no repo selected)';
+    el.textContent = `${S.username || 'me'} / ${repo}`;
+  } else {
+    const u = document.getElementById('upload-other-username').value.trim() || '(username)';
+    const r = document.getElementById('upload-other-repo').value.trim() || '(repo)';
+    el.textContent = `${u} / ${r}${U2.otherVerified ? ' ✓' : ''}`;
+  }
+}
+
+document.addEventListener('input', e => {
+  if (['upload-other-username','upload-other-token','upload-other-repo'].includes(e.target.id)) {
+    U2.otherVerified = false;
+    const stat = document.getElementById('other-account-status');
+    stat.style.display = 'none';
+    updateAcctSummary();
+  }
+});
+
+async function verifyOtherAccount() {
+  const token = document.getElementById('upload-other-token').value.trim();
+  const username = document.getElementById('upload-other-username').value.trim();
+  const repo = document.getElementById('upload-other-repo').value.trim();
+  const stat = document.getElementById('other-account-status');
+  if (!token || !username || !repo) { stat.style.display='block'; stat.style.color='var(--red)'; stat.innerHTML='<i class="fas fa-times-circle"></i> Fill in all fields first'; return; }
+  stat.style.display='block'; stat.style.color='var(--text3)'; stat.innerHTML='<span class="spinner"></span> Verifying...';
+  try {
+    const res = await fetch(`https://api.github.com/repos/${username}/${repo}`, {
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      U2.otherToken = token; U2.otherUsername = username; U2.otherRepo = repo; U2.otherVerified = true;
+      stat.style.color = 'var(--green)';
+      stat.innerHTML = `<i class="fas fa-check-circle"></i> Verified! Access to <strong>${data.full_name}</strong> confirmed.`;
+      updateAcctSummary();
+    } else {
+      const err = await res.json();
+      stat.style.color = 'var(--red)';
+      stat.innerHTML = `<i class="fas fa-times-circle"></i> ${err.message || 'Access denied'}`;
+      U2.otherVerified = false;
+    }
+  } catch(e) {
+    stat.style.color = 'var(--red)';
+    stat.innerHTML = `<i class="fas fa-times-circle"></i> Network error: ${e.message}`;
+  }
+}
+
+// -- Drag & Drop --
+function upload2DzOver(e) {
+  e.preventDefault();
+  document.getElementById('upload2-dropzone').style.borderColor = 'var(--accent)';
+  document.getElementById('upload2-dropzone').style.background = 'rgba(0,212,255,0.04)';
+}
+function upload2DzLeave(e) {
+  document.getElementById('upload2-dropzone').style.borderColor = 'var(--border2)';
+  document.getElementById('upload2-dropzone').style.background = '';
+}
+async function upload2DzDrop(e) {
+  e.preventDefault();
+  upload2DzLeave(e);
+  const items = e.dataTransfer.items;
+  const allFiles = [];
+  if (items && items.length) {
+    const promises = [];
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+        if (entry) {
+          promises.push(traverseEntry(entry, ''));
+        } else {
+          const f = item.getAsFile();
+          if (f) allFiles.push({ file: f, relativePath: f.name });
+        }
+      }
+    }
+    const nested = await Promise.all(promises);
+    nested.forEach(arr => allFiles.push(...arr));
+  } else {
+    for (const f of e.dataTransfer.files) allFiles.push({ file: f, relativePath: f.name });
+  }
+  upload2AddToQueue(allFiles);
+}
+
+function traverseEntry(entry, basePath) {
+  return new Promise(resolve => {
+    if (entry.isFile) {
+      entry.file(f => {
+        const rel = basePath ? basePath + '/' + entry.name : entry.name;
+        resolve([{ file: f, relativePath: rel }]);
+      }, () => resolve([]));
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      const results = [];
+      function readBatch() {
+        reader.readEntries(async entries => {
+          if (!entries.length) { resolve(results); return; }
+          for (const e of entries) {
+            const sub = await traverseEntry(e, basePath ? basePath+'/'+entry.name : entry.name);
+            results.push(...sub);
+          }
+          readBatch();
+        }, () => resolve(results));
+      }
+      readBatch();
+    } else { resolve([]); }
+  });
+}
+
+function upload2HandleFiles(fileList) {
+  const allFiles = [];
+  for (const f of fileList) {
+    // webkitRelativePath includes the top folder name; strip it to get just internal path
+    let rel = f.webkitRelativePath || f.name;
+    allFiles.push({ file: f, relativePath: rel });
+  }
+  upload2AddToQueue(allFiles);
+  // reset inputs
+  document.getElementById('upload2-multi-input').value = '';
+  document.getElementById('upload2-folder-input').value = '';
+}
+
+function upload2AddToQueue(newFiles) {
+  const base = (document.getElementById('upload2-base-path').value.trim()).replace(/^\/+|\/+$/g,'');
+  for (const { file, relativePath } of newFiles) {
+    // Build repo path: base + relativePath, normalised
+    let repoPath = relativePath.replace(/\\/g, '/');
+    // Remove leading slash
+    repoPath = repoPath.replace(/^\/+/, '');
+    if (base) repoPath = base + '/' + repoPath;
+    // Deduplicate
+    if (!U2.files.find(f => f.repoPath === repoPath)) {
+      U2.files.push({ file, repoPath });
+    }
+  }
+  renderUpload2Queue();
+}
+
+function renderUpload2Queue() {
+  const list = document.getElementById('upload2-queue-list');
+  const card = document.getElementById('upload2-queue-card');
+  const count = document.getElementById('upload2-queue-count');
+  const clearBtn = document.getElementById('upload2-clear-btn');
+  const startBtn = document.getElementById('upload2-start-btn');
+  const summary = document.getElementById('upload2-summary-label');
+
+  if (!U2.files.length) {
+    card.style.display = 'none';
+    clearBtn.style.display = 'none';
+    startBtn.disabled = true;
+    summary.textContent = '';
+    return;
+  }
+
+  card.style.display = 'block';
+  clearBtn.style.display = '';
+  startBtn.disabled = false;
+  count.textContent = U2.files.length + ' file' + (U2.files.length !== 1 ? 's' : '');
+  const totalSize = U2.files.reduce((a, f) => a + f.file.size, 0);
+  summary.textContent = `${U2.files.length} files · ${formatBytes(totalSize)}`;
+
+  list.innerHTML = U2.files.map((item, idx) => {
+    const isHidden = item.repoPath.split('/').some(p => p.startsWith('.'));
+    const isYml = item.repoPath.endsWith('.yml') || item.repoPath.endsWith('.yaml');
+    const isWorkflow = item.repoPath.includes('.github/workflows/');
+    let badge = '';
+    if (isWorkflow) badge = '<span style="background:rgba(255,215,0,0.15);color:var(--yellow);border:1px solid rgba(255,215,0,0.3);border-radius:10px;padding:1px 7px;font-size:10px;margin-left:6px"><i class="fas fa-bolt" style="font-size:9px"></i> workflow</span>';
+    else if (isYml) badge = '<span style="background:rgba(0,212,255,0.1);color:var(--accent);border:1px solid rgba(0,212,255,0.2);border-radius:10px;padding:1px 7px;font-size:10px;margin-left:6px">yml</span>';
+    else if (isHidden) badge = '<span style="background:rgba(124,58,237,0.1);color:#a78bfa;border:1px solid rgba(124,58,237,0.2);border-radius:10px;padding:1px 7px;font-size:10px;margin-left:6px">hidden</span>';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface3);border-radius:var(--radius);font-size:11px">
+      <span style="color:var(--text3);flex-shrink:0">${fileIcon(item.file.name,'file')}</span>
+      <span style="flex:1;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${item.repoPath}">${item.repoPath}</span>
+      ${badge}
+      <span style="color:var(--text3);flex-shrink:0">${formatBytes(item.file.size)}</span>
+      <button onclick="upload2RemoveFile(${idx})" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:2px 4px;flex-shrink:0" title="Remove">
+        <i class="fas fa-times" style="font-size:10px"></i>
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function upload2RemoveFile(idx) {
+  U2.files.splice(idx, 1);
+  renderUpload2Queue();
+}
+
+function clearUpload2Queue() {
+  U2.files = [];
+  renderUpload2Queue();
+}
+
+// -- Direct GitHub API upload --
+async function githubPut(token, username, repo, path, content, message, sha) {
+  const body = { message, content, committer: { name: username, email: `${username}@users.noreply.github.com` } };
+  if (sha) body.sha = sha;
+  const res = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${encodeURIComponent(path).replace(/%2F/g,'/')}`, {
+    method: 'PUT',
+    headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' },
+    body: JSON.stringify(body)
+  });
+  return res;
+}
+
+async function githubGetSha(token, username, repo, path) {
+  const res = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${encodeURIComponent(path).replace(/%2F/g,'/')}`, {
+    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+  });
+  if (res.ok) { const d = await res.json(); return d.sha || null; }
+  return null;
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      // e.target.result is data:xxx/xxx;base64,XXXX
+      const b64 = e.target.result.split(',')[1];
+      resolve(b64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function upload2Log(msg, type = 'info') {
+  const log = document.getElementById('upload2-log');
+  const colors = { success:'var(--green)', error:'var(--red)', info:'var(--accent)', warn:'var(--yellow)' };
+  const icons = { success:'fa-check', error:'fa-times', info:'fa-circle', warn:'fa-exclamation-triangle' };
+  const el = document.createElement('div');
+  el.style.cssText = `color:${colors[type]||'var(--text2)'};display:flex;align-items:center;gap:6px`;
+  el.innerHTML = `<i class="fas ${icons[type]||'fa-circle'}" style="font-size:9px;flex-shrink:0"></i><span style="color:var(--text2)">${msg}</span>`;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+function upload2SetProgress(done, total, label) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  document.getElementById('upload2-prog-bar').style.width = pct + '%';
+  document.getElementById('upload2-prog-pct').textContent = pct + '%';
+  document.getElementById('upload2-prog-label').textContent = label;
+}
+
+async function startUpload2() {
+  if (!U2.files.length) { toast('No files queued', 'error'); return; }
+
+  // Determine target token, username, repo
+  let token, username, repo;
+  if (U2.mode === 'self') {
+    if (!S.token || !S.currentRepo) { toast('Select a repository first', 'error'); return; }
+    token = S.token; username = S.username; repo = S.currentRepo;
+  } else {
+    token = document.getElementById('upload-other-token').value.trim();
+    username = document.getElementById('upload-other-username').value.trim();
+    repo = document.getElementById('upload-other-repo').value.trim();
+    if (!token || !username || !repo) { toast('Fill in all other-account fields', 'error'); return; }
+  }
+
+  const commitMsg = document.getElementById('upload2-commit-msg').value.trim() || 'Upload files via GitHub Manager Pro';
+  const total = U2.files.length;
+  let done = 0, errors = 0;
+
+  // Show progress
+  document.getElementById('upload2-progress-wrap').style.display = 'block';
+  document.getElementById('upload2-prog-title').textContent = `Uploading ${total} file${total !== 1 ? 's' : ''}…`;
+  document.getElementById('upload2-prog-icon').className = 'fas fa-spinner fa-spin';
+  document.getElementById('upload2-log').innerHTML = '';
+  document.getElementById('upload2-done-btn').style.display = 'none';
+  document.getElementById('upload2-start-btn').disabled = true;
+
+  upload2Log(`Target: ${username}/${repo}`, 'info');
+  upload2Log(`Uploading ${total} file(s)…`, 'info');
+
+  for (const item of U2.files) {
+    upload2SetProgress(done, total, `Uploading: ${item.repoPath}`);
+    try {
+      // Read as base64
+      const b64 = await readFileAsBase64(item.file);
+      // Check if file already exists (get sha for update)
+      const existingSha = await githubGetSha(token, username, repo, item.repoPath);
+      const res = await githubPut(token, username, repo, item.repoPath, b64, `${commitMsg}: ${item.repoPath}`, existingSha);
+      if (res.ok || res.status === 201) {
+        upload2Log(`✓ ${item.repoPath}`, 'success');
+        done++;
+      } else {
+        const err = await res.json();
+        upload2Log(`✗ ${item.repoPath} — ${err.message || res.status}`, 'error');
+        errors++;
+        done++;
+      }
+    } catch(e) {
+      upload2Log(`✗ ${item.repoPath} — ${e.message}`, 'error');
+      errors++;
+      done++;
+    }
+    upload2SetProgress(done, total, done < total ? `Uploading…` : 'Complete');
+  }
+
+  // Done
+  const icon = document.getElementById('upload2-prog-icon');
+  if (errors === 0) {
+    icon.className = 'fas fa-check-circle';
+    icon.style.color = 'var(--green)';
+    document.getElementById('upload2-prog-title').textContent = `Done! ${done} file(s) uploaded`;
+    toast(`${done} file(s) uploaded successfully!`, 'success');
+    U2.files = [];
+    renderUpload2Queue();
+  } else {
+    icon.className = 'fas fa-exclamation-triangle';
+    icon.style.color = 'var(--yellow)';
+    document.getElementById('upload2-prog-title').textContent = `Done with ${errors} error(s)`;
+    toast(`Uploaded with ${errors} error(s)`, 'error');
+  }
+  document.getElementById('upload2-done-btn').style.display = '';
+  document.getElementById('upload2-start-btn').disabled = false;
+}
+
+function upload2Done() {
+  document.getElementById('upload2-progress-wrap').style.display = 'none';
+  if (U2.mode === 'self' && S.currentRepo) { showTab('files'); loadFiles(); }
+}
+
 </script>
 </body>
 </html>
