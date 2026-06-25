@@ -743,6 +743,22 @@ body::before {
         <div class="name" id="sidebar-name">Loading...</div>
         <div class="handle" id="sidebar-handle">@...</div>
       </div>
+      <button onclick="showQuickSwitcher()" class="btn-icon" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;transition:color 0.2s" title="Switch Account">
+        <i class="fas fa-exchange-alt"></i>
+      </button>
+    </div>
+    
+    <!-- Quick Account Switcher Dropdown -->
+    <div id="quick-switcher" style="display:none;position:absolute;top:120px;left:12px;right:12px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:1000;max-height:300px;overflow-y:auto">
+      <div style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:1px">
+        Switch Account
+      </div>
+      <div id="quick-switcher-list"></div>
+      <div style="padding:8px 12px;border-top:1px solid var(--border)">
+        <button onclick="showTab('accounts');closeQuickSwitcher()" class="btn btn-secondary btn-sm" style="width:100%;font-size:11px">
+          <i class="fas fa-plus"></i> Add Account
+        </button>
+      </div>
     </div>
     <div class="nav-section">
       <div class="nav-label">Navigation</div>
@@ -1925,6 +1941,12 @@ function formatBytes(b) {
 }
 
 // ─── Auth ──────────────────────────────────────────────────────────────────────
+
+// Auto-login on page load
+window.addEventListener('DOMContentLoaded', () => {
+  autoLoginLastAccount();
+});
+
 function togglePwd() {
   const inp = document.getElementById('token-input');
   const icon = document.getElementById('eye-icon');
@@ -1946,12 +1968,97 @@ async function connectGitHub() {
     const user = await api('/api/user');
     if (user.error) { showLoginError(user.error); S.token = ''; return; }
     S.user = user;
+    
+    // Save account automatically
+    saveCurrentAccount(user);
+    
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
     setupUserUI(user);
     loadRepos();
   } catch(e) { showLoginError('Connection failed: ' + e.message); }
   finally { btn.disabled = false; document.getElementById('connect-text').textContent = 'Connect to GitHub'; }
+}
+
+function saveCurrentAccount(user) {
+  const accounts = getSavedAccounts();
+  const actualUsername = user.login || S.username;
+  
+  // Check if account exists
+  const existingIndex = accounts.findIndex(a => a.username.toLowerCase() === actualUsername.toLowerCase());
+  
+  const accountData = {
+    username: actualUsername,
+    token: S.token,
+    nickname: user.name || '',
+    name: user.name || '',
+    avatar_url: user.avatar_url || '',
+    added_at: existingIndex >= 0 ? accounts[existingIndex].added_at : new Date().toISOString(),
+    last_login: new Date().toISOString()
+  };
+  
+  if (existingIndex >= 0) {
+    accounts[existingIndex] = accountData;
+  } else {
+    accounts.push(accountData);
+  }
+  
+  saveAccountsList(accounts);
+  
+  // Set as last active account
+  localStorage.setItem('last_active_account', actualUsername);
+}
+
+async function autoLoginLastAccount() {
+  const lastActiveUsername = localStorage.getItem('last_active_account');
+  if (!lastActiveUsername) return;
+  
+  const accounts = getSavedAccounts();
+  const account = accounts.find(a => a.username.toLowerCase() === lastActiveUsername.toLowerCase());
+  
+  if (!account || !account.token) return;
+  
+  // Show loading on login screen
+  const loginScreen = document.getElementById('login-screen');
+  const btn = document.getElementById('connect-btn');
+  btn.disabled = true;
+  document.getElementById('connect-text').innerHTML = '<span class="spinner"></span> Auto-login...';
+  
+  // Auto-login
+  S.token = account.token;
+  S.username = account.username;
+  
+  try {
+    const user = await api('/api/user');
+    if (user.error) {
+      // Token might be expired, show login screen
+      btn.disabled = false;
+      document.getElementById('connect-text').textContent = 'Connect to GitHub';
+      
+      // Fill in the username for convenience
+      document.getElementById('username-input').value = account.username;
+      
+      showLoginError('Session expired. Please login again.');
+      return;
+    }
+    
+    S.user = user;
+    
+    // Update account info
+    saveCurrentAccount(user);
+    
+    // Hide login, show app
+    loginScreen.classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+    setupUserUI(user);
+    loadRepos();
+    
+    toast(`Welcome back, @${user.login}!`, 'success');
+  } catch(e) {
+    btn.disabled = false;
+    document.getElementById('connect-text').textContent = 'Connect to GitHub';
+    console.error('Auto-login failed:', e);
+  }
 }
 
 function showLoginError(msg) {
@@ -1969,11 +2076,96 @@ function setupUserUI(user) {
 }
 
 function logout() {
+  if (!confirm('Logout from this account?\n\nYour account will remain saved for quick login later.')) {
+    return;
+  }
+  
   S.token = ''; S.username = ''; S.user = null; S.repos = []; S.currentRepo = null;
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('token-input').value = '';
   document.getElementById('username-input').value = '';
+  
+  // Show saved accounts on login screen
+  showSavedAccountsOnLogin();
+}
+
+function showSavedAccountsOnLogin() {
+  const accounts = getSavedAccounts();
+  if (accounts.length === 0) return;
+  
+  // Add quick login section to login screen (if not exists)
+  let quickLoginDiv = document.getElementById('quick-login-accounts');
+  if (!quickLoginDiv) {
+    quickLoginDiv = document.createElement('div');
+    quickLoginDiv.id = 'quick-login-accounts';
+    quickLoginDiv.style.cssText = 'margin-top:20px;padding-top:20px;border-top:1px solid var(--border)';
+    
+    const loginCard = document.querySelector('.login-card');
+    const connectBtn = document.getElementById('connect-btn');
+    connectBtn.parentNode.insertBefore(quickLoginDiv, connectBtn.nextSibling);
+  }
+  
+  quickLoginDiv.innerHTML = `
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">
+      Quick Login
+    </div>
+    ${accounts.map((acc, idx) => `
+      <div onclick="quickLogin(${idx})" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.15s;margin-bottom:6px" 
+        onmouseover="this.style.borderColor='var(--accent)';this.style.background='rgba(0,212,255,0.04)'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface2)'">
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg, var(--accent2), var(--accent3));display:flex;align-items:center;justify-content:center;font-size:13px;color:white;flex-shrink:0;overflow:hidden">
+          ${acc.avatar_url ? `<img src="${acc.avatar_url}" style="width:100%;height:100%;object-fit:cover">` : acc.username[0].toUpperCase()}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${acc.nickname || acc.name || acc.username}
+          </div>
+          <div style="font-size:10px;color:var(--text3)">@${acc.username}</div>
+        </div>
+        <i class="fas fa-chevron-right" style="color:var(--text3);font-size:10px"></i>
+      </div>
+    `).join('')}
+  `;
+}
+
+async function quickLogin(index) {
+  const accounts = getSavedAccounts();
+  if (index < 0 || index >= accounts.length) return;
+  
+  const account = accounts[index];
+  
+  const btn = document.getElementById('connect-btn');
+  btn.disabled = true;
+  document.getElementById('connect-text').innerHTML = '<span class="spinner"></span> Logging in...';
+  
+  S.token = account.token;
+  S.username = account.username;
+  
+  try {
+    const user = await api('/api/user');
+    if (user.error) {
+      showLoginError('Session expired for @' + account.username + '. Please enter your token.');
+      document.getElementById('username-input').value = account.username;
+      document.getElementById('token-input').focus();
+      return;
+    }
+    
+    S.user = user;
+    saveCurrentAccount(user);
+    
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+    setupUserUI(user);
+    loadRepos();
+    
+    toast(`Welcome back, @${user.login}!`, 'success');
+  } catch(e) {
+    showLoginError('Login failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    document.getElementById('connect-text').textContent = 'Connect to GitHub';
+  }
 }
 
 // Enter key on login
@@ -1982,6 +2174,11 @@ document.addEventListener('keydown', e => {
     connectGitHub();
   }
 });
+
+// Show saved accounts on initial load
+setTimeout(() => {
+  showSavedAccountsOnLogin();
+}, 100);
 
 // ─── Tab Routing ──────────────────────────────────────────────────────────────
 const tabTitles = { overview:'Overview', repos:'Repositories', files:'File Browser', actions:'GitHub Actions', issues:'Issues', commits:'Commit History', secrets:'Secrets', pages:'GitHub Pages', accounts:'Multi-Account', upload:'Upload' };
@@ -3386,6 +3583,16 @@ function switchToAccountByUsername(username) {
   S.repos = [];
   S.currentRepo = null;
   
+  // Update last active
+  localStorage.setItem('last_active_account', account.username);
+  
+  // Update last_login timestamp
+  const accountIndex = accounts.findIndex(a => a.username.toLowerCase() === username.toLowerCase());
+  if (accountIndex >= 0) {
+    accounts[accountIndex].last_login = new Date().toISOString();
+    saveAccountsList(accounts);
+  }
+  
   // Update UI
   toast(`Switching to @${account.username}...`, 'info');
   
@@ -3464,6 +3671,59 @@ async function refreshCurrentAccount() {
     }
     
     toast('Account refreshed', 'success');
+  }
+}
+
+// ─── Quick Account Switcher ────────────────────────────────────────────────────
+
+function showQuickSwitcher() {
+  const switcher = document.getElementById('quick-switcher');
+  const list = document.getElementById('quick-switcher-list');
+  
+  const accounts = getSavedAccounts();
+  
+  if (accounts.length === 0) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">No saved accounts</div>';
+  } else {
+    list.innerHTML = accounts.map((acc, idx) => `
+      <div onclick="switchToAccount(${idx});closeQuickSwitcher()" 
+        style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;transition:background 0.1s;border-bottom:1px solid rgba(255,255,255,0.03);${acc.username === S.username ? 'background:rgba(0,212,255,0.08)' : ''}"
+        onmouseover="this.style.background='var(--surface2)'"
+        onmouseout="this.style.background='${acc.username === S.username ? 'rgba(0,212,255,0.08)' : 'transparent'}'">
+        <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg, var(--accent2), var(--accent3));display:flex;align-items:center;justify-content:center;font-size:12px;color:white;flex-shrink:0;overflow:hidden">
+          ${acc.avatar_url ? `<img src="${acc.avatar_url}" style="width:100%;height:100%;object-fit:cover">` : acc.username[0].toUpperCase()}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${acc.nickname || acc.name || acc.username}
+            ${acc.username === S.username ? '<span style="color:var(--green);margin-left:4px">✓</span>' : ''}
+          </div>
+          <div style="font-size:10px;color:var(--text3)">@${acc.username}</div>
+        </div>
+        ${acc.username !== S.username ? '<i class="fas fa-exchange-alt" style="color:var(--text3);font-size:10px"></i>' : ''}
+      </div>
+    `).join('');
+  }
+  
+  switcher.style.display = 'block';
+  
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', closeQuickSwitcherOnOutsideClick);
+  }, 100);
+}
+
+function closeQuickSwitcher() {
+  document.getElementById('quick-switcher').style.display = 'none';
+  document.removeEventListener('click', closeQuickSwitcherOnOutsideClick);
+}
+
+function closeQuickSwitcherOnOutsideClick(e) {
+  const switcher = document.getElementById('quick-switcher');
+  const userBadge = document.querySelector('.user-badge');
+  
+  if (!switcher.contains(e.target) && !userBadge.contains(e.target)) {
+    closeQuickSwitcher();
   }
 }
 
