@@ -4,9 +4,14 @@ services:
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+
     envVars:
+      - key: PYTHON_VERSION   # ✅ ADD THIS
+        value: 3.11.9         # ✅ ADD THIS
+
       - key: SECRET_KEY
         generateValue: true
       - key: DEBUG
         value: false
+
     healthCheckPath: /
