@@ -3517,6 +3517,332 @@ async function loadSecrets() {
   `).join('');
 }
 
+// ─── Advanced Search ────────────────────────────────────────────────────────────
+
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+const advSearch = {
+  running: false,
+  aborted: false,
+  matches: [],
+  filesScanned: 0,
+  filesTotal: 0
+};
+
+// Extensions we don't bother grepping during a deep scan (binary/generated/huge)
+const ADV_SKIP_EXT = /\.(png|jpe?g|gif|webp|ico|bmp|svg|woff2?|ttf|eot|otf|zip|gz|tar|7z|rar|pdf|mp4|mp3|mov|avi|webm|exe|dll|so|dylib|class|jar|pyc|lock|min\.js|min\.css)$/i;
+const ADV_MAX_FILE_SIZE = 300000; // bytes — skip huge files, they're rarely worth grepping and slow things down
+
+function initAdvancedSearch() {
+  populateAdvAccountSelectors();
+  onSearchScopeChange();
+  onSearchDepthChange();
+}
+
+function populateAdvAccountSelectors() {
+  const accounts = getSavedAccounts();
+  const single = document.getElementById('adv-single-account');
+  const multiList = document.getElementById('adv-multi-account-list');
+
+  single.innerHTML = accounts.length
+    ? accounts.map(a => `<option value="${escapeHtml(a.username)}">${escapeHtml(a.username)}</option>`).join('')
+    : '<option value="">No saved accounts — add one in Multi-Account</option>';
+
+  multiList.innerHTML = accounts.length
+    ? accounts.map(a => `
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;background:var(--surface2);border:1px solid var(--border);padding:6px 10px;border-radius:var(--radius);cursor:pointer">
+          <input type="checkbox" class="adv-multi-account-cb" value="${escapeHtml(a.username)}" checked> ${escapeHtml(a.username)}
+        </label>`).join('')
+    : '<span style="font-size:12px;color:var(--text3)">No saved accounts. Add accounts in the Multi-Account tab first.</span>';
+}
+
+function onSearchScopeChange() {
+  const scope = document.getElementById('adv-scope').value;
+  document.getElementById('adv-single-account-wrap').style.display = scope === 'single' ? 'block' : 'none';
+  document.getElementById('adv-multi-account-wrap').style.display = scope === 'selected' ? 'block' : 'none';
+}
+
+function onSearchDepthChange() {
+  const depth = document.getElementById('adv-depth').value;
+  document.getElementById('adv-deep-note').style.display = depth === 'deep' ? 'block' : 'none';
+}
+
+function getAdvTargetAccounts() {
+  const scope = document.getElementById('adv-scope').value;
+  const saved = getSavedAccounts();
+
+  if (scope === 'current') {
+    return S.token && S.username ? [{ username: S.username, token: S.token }] : [];
+  }
+  if (scope === 'single') {
+    const uname = document.getElementById('adv-single-account').value;
+    const acc = saved.find(a => a.username === uname);
+    return acc ? [{ username: acc.username, token: acc.token }] : [];
+  }
+  if (scope === 'selected') {
+    const checked = Array.from(document.querySelectorAll('.adv-multi-account-cb:checked')).map(cb => cb.value);
+    return saved.filter(a => checked.includes(a.username)).map(a => ({ username: a.username, token: a.token }));
+  }
+  // all
+  return saved.map(a => ({ username: a.username, token: a.token }));
+}
+
+// Simple client-side matcher mirroring the backend's text_matches(), used for
+// the deep scan so we don't need a network round-trip just to test a match.
+function advClientMatch(term, text, mode) {
+  if (!text) return false;
+  if (mode === 'exact') {
+    return new RegExp('\\b' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(text);
+  }
+  if (mode === 'semantic') {
+    const termTokens = term.toLowerCase().match(/[a-z0-9]+/g) || [];
+    const textLower = text.toLowerCase();
+    return termTokens.some(t => t.length > 2 && textLower.includes(t));
+  }
+  return text.toLowerCase().includes(term.toLowerCase());
+}
+
+function setAdvProgress(current, total, statusText) {
+  const wrap = document.getElementById('adv-progress-bar-wrap');
+  const bar = document.getElementById('adv-progress-bar');
+  const status = document.getElementById('adv-status');
+  if (total > 0) {
+    wrap.style.display = 'block';
+    bar.style.width = Math.min(100, Math.round((current / total) * 100)) + '%';
+  } else {
+    wrap.style.display = 'block';
+    bar.style.width = '4%'; // indeterminate-ish sliver while total is unknown
+  }
+  status.textContent = statusText || '';
+}
+
+async function runPool(items, limit, worker) {
+  let i = 0;
+  const runners = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+    while (i < items.length && !advSearch.aborted) {
+      const idx = i++;
+      await worker(items[idx], idx);
+    }
+  });
+  await Promise.all(runners);
+}
+
+function advResultCard(m) {
+  if (m.kind === 'repo') {
+    return `
+      <div class="repo-item">
+        <div class="repo-details">
+          <div class="rname"><i class="fas fa-folder" style="color:var(--accent2);margin-right:6px"></i>${escapeHtml(m.full_name || m.name)} <span style="color:var(--text3);font-weight:400;font-size:11px">@${escapeHtml(m.account)}</span></div>
+          <div class="rdesc">${escapeHtml(m.description) || 'No description'}</div>
+        </div>
+        <a class="btn btn-secondary" style="font-size:11px;padding:5px 10px" href="${escapeHtml(m.html_url)}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i> Open</a>
+      </div>`;
+  }
+  if (m.kind === 'code') {
+    return `
+      <div class="repo-item">
+        <div class="repo-details">
+          <div class="rname"><i class="fas fa-file-code" style="color:var(--accent2);margin-right:6px"></i>${escapeHtml(m.path)}</div>
+          <div class="rdesc">${escapeHtml(m.repository)} <span style="color:var(--text3)">@${escapeHtml(m.account)}</span></div>
+        </div>
+        <a class="btn btn-secondary" style="font-size:11px;padding:5px 10px" href="${escapeHtml(m.html_url)}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i> Open</a>
+      </div>`;
+  }
+  // deep-scan file match
+  return `
+    <div class="repo-item">
+      <div class="repo-details">
+        <div class="rname"><i class="fas fa-file-lines" style="color:var(--accent2);margin-right:6px"></i>${escapeHtml(m.path)}</div>
+        <div class="rdesc">${escapeHtml(m.repository)} <span style="color:var(--text3)">@${escapeHtml(m.account)}</span></div>
+        ${m.snippet ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-top:6px;overflow-x:auto;white-space:pre">${escapeHtml(m.snippet)}</div>` : ''}
+      </div>
+      <a class="btn btn-secondary" style="font-size:11px;padding:5px 10px" href="${escapeHtml(m.html_url)}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i> Open</a>
+    </div>`;
+}
+
+function renderAdvResults() {
+  const container = document.getElementById('adv-results-container');
+  document.getElementById('adv-results-count').textContent = advSearch.matches.length;
+  if (!advSearch.matches.length) {
+    if (advSearch.running) {
+      container.innerHTML = `<div class="empty-state"><div class="spinner"></div><p>Searching...</p></div>`;
+    }
+    return;
+  }
+  container.innerHTML = advSearch.matches.map(advResultCard).join('');
+}
+
+function advSetRunningUI(running) {
+  advSearch.running = running;
+  document.getElementById('adv-search-btn').style.display = running ? 'none' : 'inline-flex';
+  document.getElementById('adv-stop-btn').style.display = running ? 'inline-flex' : 'none';
+  document.getElementById('adv-search-term').disabled = running;
+  document.getElementById('adv-scope').disabled = running;
+  document.getElementById('adv-mode').disabled = running;
+  document.getElementById('adv-depth').disabled = running;
+}
+
+function stopAdvancedSearch() {
+  advSearch.aborted = true;
+  document.getElementById('adv-status').textContent = 'Stopping...';
+}
+
+async function runAdvancedSearch() {
+  const term = document.getElementById('adv-search-term').value.trim();
+  const mode = document.getElementById('adv-mode').value;
+  const depth = document.getElementById('adv-depth').value;
+  const accounts = getAdvTargetAccounts();
+
+  if (!term) { toast('Enter a search term', 'error'); return; }
+  if (!accounts.length) { toast('No accounts to search — check your Account Scope selection', 'error'); return; }
+
+  advSearch.aborted = false;
+  advSearch.matches = [];
+  advSearch.filesScanned = 0;
+  advSearch.filesTotal = 0;
+  advSetRunningUI(true);
+  renderAdvResults();
+  setAdvProgress(0, accounts.length, `Starting search across ${accounts.length} account${accounts.length > 1 ? 's' : ''}...`);
+
+  try {
+    if (depth === 'repos') await advSearchRepos(accounts, term, mode);
+    else if (depth === 'code') await advSearchCode(accounts, term, mode);
+    else await advSearchDeep(accounts, term, mode);
+  } catch (e) {
+    toast('Search failed: ' + e.message, 'error');
+  }
+
+  advSetRunningUI(false);
+  const statusEl = document.getElementById('adv-status');
+  if (advSearch.aborted) {
+    statusEl.textContent = `Stopped — ${advSearch.matches.length} match${advSearch.matches.length === 1 ? '' : 'es'} found before stopping.`;
+  } else {
+    statusEl.textContent = `Done — ${advSearch.matches.length} match${advSearch.matches.length === 1 ? '' : 'es'} found.`;
+    document.getElementById('adv-progress-bar').style.width = '100%';
+  }
+  renderAdvResults();
+}
+
+async function advSearchRepos(accounts, term, mode) {
+  let done = 0;
+  for (const acc of accounts) {
+    if (advSearch.aborted) break;
+    setAdvProgress(done, accounts.length, `Scanning repos for @${acc.username} (${done + 1}/${accounts.length})...`);
+    const data = await fetch('/api/search/repos', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: acc.token, term, mode })
+    }).then(r => r.json());
+
+    if (data.error) {
+      toast(`@${acc.username}: ${data.error}`, 'error');
+    } else {
+      (data.matches || []).forEach(m => advSearch.matches.push({ kind: 'repo', account: acc.username, ...m }));
+      renderAdvResults();
+    }
+    done++;
+    setAdvProgress(done, accounts.length, `Scanned ${done}/${accounts.length} accounts — ${advSearch.matches.length} matches`);
+  }
+}
+
+async function advSearchCode(accounts, term, mode) {
+  let done = 0;
+  for (const acc of accounts) {
+    if (advSearch.aborted) break;
+    setAdvProgress(done, accounts.length, `Code-searching @${acc.username} (${done + 1}/${accounts.length})...`);
+    const data = await fetch('/api/search/code', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: acc.token, username: acc.username, term, mode })
+    }).then(r => r.json());
+
+    if (data.error) {
+      toast(`@${acc.username}: ${data.error}`, 'error');
+    } else {
+      (data.items || []).forEach(m => advSearch.matches.push({ kind: 'code', account: acc.username, ...m }));
+      renderAdvResults();
+    }
+    done++;
+    setAdvProgress(done, accounts.length, `Scanned ${done}/${accounts.length} accounts — ${advSearch.matches.length} matches`);
+    // GitHub's code search endpoint is rate-limited (~10 req/min) — a small
+    // pause between accounts keeps multi-account searches from hitting 403s.
+    if (!advSearch.aborted && done < accounts.length) await new Promise(r => setTimeout(r, 1500));
+  }
+}
+
+async function advSearchDeep(accounts, term, mode) {
+  // Phase 1: gather repos per account
+  setAdvProgress(0, 0, `Listing repositories across ${accounts.length} account${accounts.length > 1 ? 's' : ''}...`);
+  const repoJobs = [];
+  for (const acc of accounts) {
+    if (advSearch.aborted) return;
+    const data = await fetch('/api/accounts/repos', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: acc.token })
+    }).then(r => r.json());
+    if (data.error) { toast(`@${acc.username}: ${data.error}`, 'error'); continue; }
+    (data.repos || []).forEach(r => repoJobs.push({ account: acc.username, token: acc.token, repo: r.name }));
+  }
+
+  if (!repoJobs.length) { setAdvProgress(0, 1, 'No repositories found to scan.'); return; }
+
+  // Phase 2: for each repo, get its file tree, then grep candidate files
+  let reposDone = 0;
+  for (const job of repoJobs) {
+    if (advSearch.aborted) break;
+    setAdvProgress(advSearch.filesScanned, Math.max(advSearch.filesTotal, advSearch.filesScanned + 1),
+      `[${reposDone + 1}/${repoJobs.length}] Listing files in ${job.account}/${job.repo}...`);
+
+    const treeData = await fetch('/api/repos/tree', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: job.token, username: job.account, repo: job.repo })
+    }).then(r => r.json());
+
+    if (treeData.error) { reposDone++; continue; }
+
+    const candidates = (treeData.files || []).filter(f =>
+      !ADV_SKIP_EXT.test(f.path) && f.size > 0 && f.size <= ADV_MAX_FILE_SIZE
+    );
+    advSearch.filesTotal += candidates.length;
+
+    await runPool(candidates, 6, async (file) => {
+      if (advSearch.aborted) return;
+      const blob = await fetch('/api/repos/blob', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: job.token, username: job.account, repo: job.repo, sha: file.sha })
+      }).then(r => r.json()).catch(() => ({}));
+
+      advSearch.filesScanned++;
+
+      if (blob.content && advClientMatch(term, blob.content, mode)) {
+        const lines = blob.content.split('\n');
+        const lineIdx = lines.findIndex(l => advClientMatch(term, l, mode));
+        const snippet = lineIdx >= 0
+          ? `${lineIdx + 1}: ${lines[lineIdx].trim().slice(0, 200)}`
+          : '';
+        advSearch.matches.push({
+          kind: 'file',
+          account: job.account,
+          repository: `${job.account}/${job.repo}`,
+          path: file.path,
+          snippet,
+          html_url: `https://github.com/${job.account}/${job.repo}/blob/${treeData.branch}/${file.path}`
+        });
+        renderAdvResults();
+      }
+
+      if (advSearch.filesScanned % 5 === 0 || advSearch.filesScanned === advSearch.filesTotal) {
+        setAdvProgress(advSearch.filesScanned, advSearch.filesTotal,
+          `[${reposDone + 1}/${repoJobs.length}] ${job.account}/${job.repo} — ${advSearch.filesScanned}/${advSearch.filesTotal} files scanned — ${advSearch.matches.length} matches`);
+      }
+    });
+
+    reposDone++;
+  }
+}
+
 // ─── Multi-Account Functions ───────────────────────────────────────────────────
 
 // Saved accounts in localStorage
