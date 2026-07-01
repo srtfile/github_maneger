@@ -686,22 +686,6 @@ body::before {
 }
 .repo-link:hover { opacity: 1; text-decoration: underline; }
 
-/* ── Search Buttons ── */
-.scope-btn, .mode-btn {
-  background: var(--surface2);
-  color: var(--text2);
-  border-color: var(--border);
-}
-.scope-btn.active, .mode-btn.active {
-  background: rgba(0,212,255,0.15);
-  color: var(--accent);
-  border-color: var(--accent);
-}
-.scope-btn:hover, .mode-btn:hover {
-  border-color: var(--accent2);
-  color: var(--text);
-}
-
 /* Responsive tweaks
 @media (max-width: 900px) {
   .sidebar { width: 52px; min-width: 52px; }
@@ -815,13 +799,13 @@ body::before {
         <span class="nav-icon"><i class="fas fa-users"></i></span>
         <span>Multi-Account</span>
       </div>
+      <div class="nav-item" onclick="showTab('search')">
+        <span class="nav-icon"><i class="fas fa-magnifying-glass-chart"></i></span>
+        <span>Advanced Search</span>
+      </div>
       <div class="nav-item" onclick="showTab('upload')">
         <span class="nav-icon"><i class="fas fa-cloud-upload-alt"></i></span>
         <span>Upload</span>
-      </div>
-      <div class="nav-item" onclick="showTab('search')">
-        <span class="nav-icon"><i class="fas fa-magnifying-glass"></i></span>
-        <span>Advanced Search</span>
       </div>
     </div>
     <div class="sidebar-footer">
@@ -1226,6 +1210,104 @@ body::before {
         </div>
       </div>
 
+      <!-- ── ADVANCED SEARCH ── -->
+      <div class="tab-panel" id="tab-search">
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header">
+            <i class="fas fa-magnifying-glass-chart" style="color:var(--accent2)"></i>
+            <h3>Advanced Search</h3>
+          </div>
+          <div style="padding:16px">
+
+            <div class="search-bar" style="margin-bottom:14px">
+              <i class="fas fa-search search-icon"></i>
+              <input type="text" id="adv-search-term" placeholder="Search term, e.g. vidrock or multiboys..." onkeydown="if(event.key==='Enter')runAdvancedSearch()">
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+              <div>
+                <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:5px">
+                  <i class="fas fa-users"></i> Account Scope
+                </label>
+                <select class="form-select" id="adv-scope" style="width:100%" onchange="onSearchScopeChange()">
+                  <option value="current">Current account only</option>
+                  <option value="single">Single account (choose)</option>
+                  <option value="selected">Selected accounts (multi)</option>
+                  <option value="all">All saved accounts</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:5px">
+                  <i class="fas fa-crosshairs"></i> Match Mode
+                </label>
+                <select class="form-select" id="adv-mode" style="width:100%">
+                  <option value="partial" selected>Partial (substring)</option>
+                  <option value="exact">Exact (whole word)</option>
+                  <option value="semantic">Semantic (fuzzy)</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:5px">
+                  <i class="fas fa-layer-group"></i> Search Depth
+                </label>
+                <select class="form-select" id="adv-depth" style="width:100%" onchange="onSearchDepthChange()">
+                  <option value="repos">Repo names / descriptions</option>
+                  <option value="code" selected>Code search (indexed, fast)</option>
+                  <option value="deep">Deep file scan (thorough, slow)</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="adv-single-account-wrap" style="display:none;margin-bottom:12px">
+              <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:5px">Choose account</label>
+              <select class="form-select" id="adv-single-account" style="width:100%"></select>
+            </div>
+
+            <div id="adv-multi-account-wrap" style="display:none;margin-bottom:12px">
+              <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:5px">Choose accounts</label>
+              <div id="adv-multi-account-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+            </div>
+
+            <div id="adv-deep-note" style="display:none;font-size:11px;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;margin-bottom:12px">
+              <i class="fas fa-triangle-exclamation" style="color:var(--yellow,#ffd700)"></i>
+              Deep scan downloads and greps every text file in every matching repo, line by line. It's exhaustive but slow and uses more API calls — best used scoped to a single account, or after narrowing down with a repo-name search first.
+            </div>
+
+            <div style="display:flex;gap:10px;align-items:center">
+              <button class="btn btn-primary" id="adv-search-btn" onclick="runAdvancedSearch()">
+                <i class="fas fa-search"></i> Search
+              </button>
+              <button class="btn btn-secondary" id="adv-stop-btn" onclick="stopAdvancedSearch()" style="display:none">
+                <i class="fas fa-stop"></i> Stop
+              </button>
+              <div id="adv-status" style="font-size:12px;color:var(--text3)"></div>
+            </div>
+
+            <div id="adv-progress-bar-wrap" style="display:none;margin-top:10px;height:4px;background:var(--surface2);border-radius:2px;overflow:hidden">
+              <div id="adv-progress-bar" style="height:100%;width:0%;background:var(--accent2);transition:width .2s"></div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-list" style="color:var(--accent2)"></i>
+            <h3>Results</h3>
+            <span class="nav-badge" id="adv-results-count" style="margin-left:auto">0</span>
+          </div>
+          <div style="padding:12px" id="adv-results-container">
+            <div class="empty-state">
+              <div class="empty-icon"><i class="fas fa-magnifying-glass-chart"></i></div>
+              <p>Enter a term above and hit Search</p>
+              <p style="font-size:11px;margin-top:6px">Searches repo names, indexed code, or full file contents across one or many GitHub accounts</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
       <!-- ── UPLOAD ── -->
       <div class="tab-panel" id="tab-upload">
         <div style="max-width:700px;margin:0 auto">
@@ -1369,250 +1451,6 @@ body::before {
                   <i class="fas fa-check"></i> Done - View Files
                 </button>
               </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      <!-- ── ADVANCED SEARCH ── -->
-      <div class="tab-panel" id="tab-search">
-        <div style="max-width:1200px;margin:0 auto">
-          
-          <!-- Search Configuration Card -->
-          <div class="card" style="margin-bottom:16px">
-            <div class="card-header">
-              <i class="fas fa-sliders" style="color:var(--accent2)"></i>
-              <h3>Search Configuration</h3>
-              <div class="card-actions">
-                <div id="search-stats-badge" style="display:none;background:var(--accent2);color:white;padding:4px 12px;border-radius:12px;font-size:11px;font-weight:600">
-                  <i class="fas fa-users"></i> <span id="account-count">0</span> accounts · 
-                  <i class="fas fa-folder"></i> <span id="total-repos-count">0</span> repos
-                </div>
-              </div>
-            </div>
-            <div style="padding:20px">
-              
-              <!-- Account Statistics (shows when All Accounts is selected) -->
-              <div id="account-stats-panel" style="display:none;margin-bottom:20px;padding:16px;background:linear-gradient(135deg, rgba(0,212,255,0.1), rgba(124,58,237,0.1));border:1px solid var(--accent);border-radius:var(--radius2)">
-                <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
-                  <div style="font-size:14px;font-weight:700;color:var(--accent)">
-                    <i class="fas fa-globe"></i> Multi-Account Search Mode
-                  </div>
-                  <div style="margin-left:auto;display:flex;gap:16px">
-                    <div style="text-align:center">
-                      <div style="font-size:24px;font-weight:800;color:var(--green)" id="stats-accounts">0</div>
-                      <div style="font-size:10px;color:var(--text3);text-transform:uppercase">Accounts</div>
-                    </div>
-                    <div style="text-align:center">
-                      <div style="font-size:24px;font-weight:800;color:var(--accent2)" id="stats-total-repos">0</div>
-                      <div style="font-size:10px;color:var(--text3);text-transform:uppercase">Total Repos</div>
-                    </div>
-                  </div>
-                </div>
-                <div id="account-breakdown" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px"></div>
-              </div>
-              
-              <!-- Search Query -->
-              <div class="form-group">
-                <label class="form-label">Search Query</label>
-                <div style="display:flex;gap:8px">
-                  <input type="text" class="form-input" id="search-query" placeholder="Enter your search query..." style="flex:1">
-                  <button class="btn btn-primary" onclick="executeSearch()">
-                    <i class="fas fa-magnifying-glass"></i> Search
-                  </button>
-                </div>
-              </div>
-
-              <!-- Search Scope -->
-              <div class="form-group">
-                <label class="form-label">Search Scope</label>
-                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
-                  <button class="btn scope-btn active" id="scope-single" onclick="setSearchScope('single')">
-                    <i class="fas fa-folder"></i> Current Repo
-                  </button>
-                  <button class="btn scope-btn" id="scope-selected" onclick="setSearchScope('selected')">
-                    <i class="fas fa-check-square"></i> Selected Repos
-                  </button>
-                  <button class="btn scope-btn" id="scope-all" onclick="setSearchScope('all')">
-                    <i class="fas fa-database"></i> All My Repos
-                  </button>
-                  <button class="btn scope-btn" id="scope-account" onclick="setSearchScope('account')">
-                    <i class="fas fa-users"></i> All Accounts
-                  </button>
-                </div>
-              </div>
-
-              <!-- Selected Repos (shown when scope is 'selected') -->
-              <div class="form-group" id="selected-repos-container" style="display:none">
-                <label class="form-label">Select Repositories</label>
-                <div id="repo-selector-list" style="max-height:200px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px"></div>
-              </div>
-
-              <!-- Search Mode -->
-              <div class="form-group">
-                <label class="form-label">Search Mode</label>
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-                  <button class="btn mode-btn active" id="mode-fuzzy" onclick="setSearchMode('fuzzy')">
-                    <i class="fas fa-wand-magic-sparkles"></i> Fuzzy Match
-                  </button>
-                  <button class="btn mode-btn" id="mode-exact" onclick="setSearchMode('exact')">
-                    <i class="fas fa-equals"></i> Exact Match
-                  </button>
-                  <button class="btn mode-btn" id="mode-semantic" onclick="setSearchMode('semantic')">
-                    <i class="fas fa-brain"></i> Semantic<span id="semantic-badge" style="margin-left:4px;font-size:9px;opacity:0.7"></span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Search In -->
-              <div class="form-group">
-                <label class="form-label">Search In</label>
-                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
-                  <label class="form-check" style="background:var(--surface2);padding:10px;border-radius:var(--radius);border:1px solid var(--border)">
-                    <input type="checkbox" id="search-in-filename" checked>
-                    <span>File Names</span>
-                  </label>
-                  <label class="form-check" style="background:var(--surface2);padding:10px;border-radius:var(--radius);border:1px solid var(--border)">
-                    <input type="checkbox" id="search-in-content" checked>
-                    <span>File Content</span>
-                  </label>
-                  <label class="form-check" style="background:var(--surface2);padding:10px;border-radius:var(--radius);border:1px solid var(--border)">
-                    <input type="checkbox" id="search-in-repo">
-                    <span>Repo Names</span>
-                  </label>
-                  <label class="form-check" style="background:var(--surface2);padding:10px;border-radius:var(--radius);border:1px solid var(--border)">
-                    <input type="checkbox" id="search-in-desc">
-                    <span>Descriptions</span>
-                  </label>
-                </div>
-              </div>
-
-              <!-- Advanced Filters -->
-              <details style="margin-top:12px">
-                <summary style="font-size:12px;color:var(--accent2);cursor:pointer;user-select:none">
-                  <i class="fas fa-filter"></i> Advanced Filters
-                </summary>
-                <div style="margin-top:12px;padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label class="form-label">File Extensions (comma separated)</label>
-                      <input type="text" class="form-input" id="search-extensions" placeholder=".js, .py, .md">
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label">File Pattern (regex)</label>
-                      <input type="text" class="form-input" id="search-file-pattern" placeholder=".*test.*">
-                    </div>
-                  </div>
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label class="form-label">Exclude Pattern (regex)</label>
-                      <input type="text" class="form-input" id="search-exclude-pattern" placeholder="node_modules|dist">
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label">Programming Language</label>
-                      <select class="form-select" id="search-language">
-                        <option value="">All Languages</option>
-                        <option value="JavaScript">JavaScript</option>
-                        <option value="Python">Python</option>
-                        <option value="TypeScript">TypeScript</option>
-                        <option value="Java">Java</option>
-                        <option value="Go">Go</option>
-                        <option value="Rust">Rust</option>
-                        <option value="C++">C++</option>
-                        <option value="C#">C#</option>
-                        <option value="PHP">PHP</option>
-                        <option value="Ruby">Ruby</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label class="form-label">Max Results</label>
-                      <input type="number" class="form-input" id="search-max-results" value="100" min="10" max="500">
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label">Search Type</label>
-                      <select class="form-select" id="search-type">
-                        <option value="repository">Repository Search</option>
-                        <option value="code">GitHub Code Search</option>
-                        <option value="issues">Issues Search</option>
-                        <option value="commits">Commits Search</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </details>
-
-            </div>
-          </div>
-
-          <!-- Search Results Card -->
-          <div class="card" id="search-results-card" style="display:none">
-            <div class="card-header">
-              <i class="fas fa-list-check" style="color:var(--green)"></i>
-              <h3>Search Results</h3>
-              <div class="card-actions">
-                <span id="search-results-count" style="background:var(--green);color:black;border-radius:10px;padding:2px 10px;font-size:11px;font-weight:600">0 results</span>
-              </div>
-            </div>
-            <div style="padding:16px 20px">
-              
-              <!-- Search Summary -->
-              <div id="search-summary" style="margin-bottom:16px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px"></div>
-
-              <!-- Results List -->
-              <div id="search-results-list"></div>
-
-              <!-- Load More Button -->
-              <div id="search-load-more" style="display:none;text-align:center;margin-top:16px">
-                <button class="btn btn-secondary" onclick="loadMoreResults()">
-                  <i class="fas fa-chevron-down"></i> Load More Results
-                </button>
-              </div>
-
-            </div>
-          </div>
-
-          <!-- No Results -->
-          <div class="card" id="search-no-results" style="display:none">
-            <div style="padding:48px 24px">
-              <div class="empty-state">
-                <i class="fas fa-magnifying-glass empty-icon"></i>
-                <p>No results found. Try adjusting your search query or filters.</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Search Tips -->
-          <div class="card" id="search-tips" style="margin-top:16px">
-            <div class="card-header">
-              <i class="fas fa-lightbulb" style="color:var(--yellow)"></i>
-              <h3>Search Tips</h3>
-            </div>
-            <div style="padding:16px 20px;font-size:12px;line-height:1.8">
-              <ul style="list-style:none;display:grid;gap:10px">
-                <li style="display:flex;gap:10px">
-                  <i class="fas fa-check" style="color:var(--green);margin-top:2px"></i>
-                  <span><strong>Fuzzy Match:</strong> Finds partial matches and similar words (e.g., "auth" matches "authentication", "authorize")</span>
-                </li>
-                <li style="display:flex;gap:10px">
-                  <i class="fas fa-check" style="color:var(--green);margin-top:2px"></i>
-                  <span><strong>Exact Match:</strong> Only finds exact phrase matches (case-insensitive)</span>
-                </li>
-                <li style="display:flex;gap:10px">
-                  <i class="fas fa-check" style="color:var(--green);margin-top:2px"></i>
-                  <span><strong>Semantic Search:</strong> Uses AI to find conceptually similar content (requires backend support)</span>
-                </li>
-                <li style="display:flex;gap:10px">
-                  <i class="fas fa-check" style="color:var(--green);margin-top:2px"></i>
-                  <span><strong>All Accounts:</strong> Searches across all saved GitHub accounts simultaneously</span>
-                </li>
-                <li style="display:flex;gap:10px">
-                  <i class="fas fa-check" style="color:var(--green);margin-top:2px"></i>
-                  <span><strong>File Patterns:</strong> Use regex like <code>.*\.test\.js$</code> to match specific file patterns</span>
-                </li>
-              </ul>
             </div>
           </div>
 
@@ -2445,8 +2283,8 @@ setTimeout(() => {
 }, 100);
 
 // ─── Tab Routing ──────────────────────────────────────────────────────────────
-const tabTitles = { overview:'Overview', repos:'Repositories', files:'File Browser', actions:'GitHub Actions', issues:'Issues', commits:'Commit History', secrets:'Secrets', pages:'GitHub Pages', accounts:'Multi-Account', upload:'Upload' };
-const tabSubs = { overview:'Dashboard', repos:'All Repos', files:'Editor', actions:'Workflows & Runs', issues:'Tracker', commits:'History', secrets:'Env Variables', pages:'Deployment', accounts:'Management', upload:'Files & Folders' };
+const tabTitles = { overview:'Overview', repos:'Repositories', files:'File Browser', actions:'GitHub Actions', issues:'Issues', commits:'Commit History', secrets:'Secrets', pages:'GitHub Pages', accounts:'Multi-Account', upload:'Upload', search:'Advanced Search' };
+const tabSubs = { overview:'Dashboard', repos:'All Repos', files:'Editor', actions:'Workflows & Runs', issues:'Tracker', commits:'History', secrets:'Env Variables', pages:'Deployment', accounts:'Management', upload:'Files & Folders', search:'Cross-account & deep file search' };
 
 function showTab(name) {
   document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
@@ -2462,6 +2300,7 @@ function showTab(name) {
   if (name === 'secrets' && S.currentRepo) loadSecrets();
   if (name === 'pages' && S.currentRepo) checkPagesStatus();
   if (name === 'accounts') loadCurrentAccountInfo();
+  if (name === 'search') initAdvancedSearch();
 }
 
 // ─── Repo Select ──────────────────────────────────────────────────────────────
@@ -4194,392 +4033,6 @@ async function executeBatchAddSecrets() {
     const failed = data.results.filter(r => r.status === 'failed').length;
     toast(`Secret added: ${success} success, ${failed} failed`, success > 0 ? 'success' : 'error');
   }
-}
-
-// ─── ADVANCED SEARCH ──────────────────────────────────────────────────────────
-
-let searchState = {
-  scope: 'single',
-  mode: 'fuzzy',
-  selectedRepos: [],
-  lastResults: []
-};
-
-function setSearchScope(scope) {
-  searchState.scope = scope;
-  document.querySelectorAll('.scope-btn').forEach(btn => btn.classList.remove('active'));
-  document.getElementById(`scope-${scope}`).classList.add('active');
-  
-  // Show/hide repo selector for 'selected' scope
-  const container = document.getElementById('selected-repos-container');
-  if (scope === 'selected') {
-    container.style.display = 'block';
-    loadRepoSelectorList();
-  } else {
-    container.style.display = 'none';
-  }
-  
-  // Show/hide account stats for 'account' scope
-  const statsPanel = document.getElementById('account-stats-panel');
-  const statsBadge = document.getElementById('search-stats-badge');
-  
-  if (scope === 'account') {
-    statsPanel.style.display = 'block';
-    statsBadge.style.display = 'flex';
-    loadAllAccountsStats();
-  } else {
-    statsPanel.style.display = 'none';
-    statsBadge.style.display = 'none';
-  }
-}
-
-async function loadAllAccountsStats() {
-  const accounts = getSavedAccounts();
-  
-  if (accounts.length === 0) {
-    document.getElementById('account-breakdown').innerHTML = `
-      <div style="grid-column:1/-1;text-align:center;padding:24px;color:var(--text3)">
-        <i class="fas fa-users" style="font-size:32px;opacity:0.3;margin-bottom:8px;display:block"></i>
-        No accounts added yet. Go to "Multi-Account" tab to add accounts.
-      </div>
-    `;
-    return;
-  }
-  
-  document.getElementById('stats-accounts').textContent = accounts.length;
-  document.getElementById('account-count').textContent = accounts.length;
-  
-  // Show loading state
-  document.getElementById('account-breakdown').innerHTML = `
-    <div style="grid-column:1/-1;text-align:center;padding:16px">
-      <div class="spinner" style="width:24px;height:24px;border-width:3px"></div>
-      <div style="margin-top:8px;font-size:12px;color:var(--text3)">Loading repository counts...</div>
-    </div>
-  `;
-  
-  let totalRepos = 0;
-  const accountStats = [];
-  
-  // Fetch repo count for each account
-  for (const account of accounts) {
-    try {
-      const data = await apiCall('/api/repos', { token: account.token });
-      const repoCount = data.total || 0;
-      totalRepos += repoCount;
-      
-      accountStats.push({
-        username: account.username,
-        nickname: account.nickname,
-        avatar: account.avatar_url,
-        repoCount: repoCount,
-        status: 'success'
-      });
-    } catch (e) {
-      accountStats.push({
-        username: account.username,
-        nickname: account.nickname,
-        avatar: account.avatar_url,
-        repoCount: 0,
-        status: 'failed',
-        error: e.message
-      });
-    }
-  }
-  
-  // Update totals
-  document.getElementById('stats-total-repos').textContent = totalRepos;
-  document.getElementById('total-repos-count').textContent = totalRepos;
-  
-  // Display account breakdown
-  document.getElementById('account-breakdown').innerHTML = accountStats.map(acc => `
-    <div style="background:var(--surface2);border:1px solid ${acc.status === 'success' ? 'var(--border)' : 'var(--red)'};border-radius:var(--radius);padding:10px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent3));display:flex;align-items:center;justify-content:center;font-size:11px;color:white;font-weight:600;flex-shrink:0;overflow:hidden">
-          ${acc.avatar ? `<img src="${acc.avatar}" style="width:100%;height:100%;object-fit:cover">` : acc.username[0].toUpperCase()}
-        </div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            ${acc.nickname || acc.username}
-          </div>
-          <div style="font-size:10px;color:var(--text3)">@${acc.username}</div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-        <div style="font-size:10px;color:var(--text3)">Repositories</div>
-        <div style="font-size:16px;font-weight:800;color:${acc.status === 'success' ? 'var(--accent2)' : 'var(--red)'}">
-          ${acc.status === 'success' ? acc.repoCount : '✗'}
-        </div>
-      </div>
-      ${acc.status === 'failed' ? `<div style="font-size:9px;color:var(--red);margin-top:4px">Failed to load</div>` : ''}
-    </div>
-  `).join('');
-}
-
-function setSearchMode(mode) {
-  searchState.mode = mode;
-  document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-  document.getElementById(`mode-${mode}`).classList.add('active');
-}
-
-async function loadRepoSelectorList() {
-  const container = document.getElementById('repo-selector-list');
-  container.innerHTML = '<div style="text-align:center;padding:12px"><div class="spinner"></div> Loading...</div>';
-  
-  try {
-    const data = await apiCall('/api/repos', { token: S.token });
-    const repos = data.repos || [];
-    
-    if (repos.length === 0) {
-      container.innerHTML = '<div class="empty-state"><p>No repositories found</p></div>';
-      return;
-    }
-    
-    container.innerHTML = repos.map(repo => `
-      <label class="form-check" style="padding:8px;margin-bottom:4px;background:${searchState.selectedRepos.some(r => r.repo === repo.name) ? 'rgba(0,212,255,0.08)' : 'transparent'}">
-        <input type="checkbox" value="${repo.name}" onchange="toggleRepoSelection('${repo.owner.login}', '${repo.name}', this.checked)" ${searchState.selectedRepos.some(r => r.repo === repo.name) ? 'checked' : ''}>
-        <span>${repo.name}</span>
-      </label>
-    `).join('');
-  } catch (e) {
-    container.innerHTML = `<div class="empty-state"><p style="color:var(--red)">Failed to load repos</p></div>`;
-  }
-}
-
-function toggleRepoSelection(username, repo, checked) {
-  if (checked) {
-    searchState.selectedRepos.push({ username, repo });
-  } else {
-    searchState.selectedRepos = searchState.selectedRepos.filter(r => r.repo !== repo);
-  }
-}
-
-async function executeSearch() {
-  const query = document.getElementById('search-query').value.trim();
-  if (!query) {
-    toast('Please enter a search query', 'error');
-    return;
-  }
-  
-  // Get search configuration
-  const searchIn = [];
-  if (document.getElementById('search-in-filename').checked) searchIn.push('filename');
-  if (document.getElementById('search-in-content').checked) searchIn.push('content');
-  if (document.getElementById('search-in-repo').checked) searchIn.push('repo_name');
-  if (document.getElementById('search-in-desc').checked) searchIn.push('description');
-  
-  const extensions = document.getElementById('search-extensions').value.split(',').map(e => e.trim()).filter(e => e);
-  const filePattern = document.getElementById('search-file-pattern').value.trim();
-  const excludePattern = document.getElementById('search-exclude-pattern').value.trim();
-  const language = document.getElementById('search-language').value;
-  const maxResults = parseInt(document.getElementById('search-max-results').value) || 100;
-  const searchType = document.getElementById('search-type').value;
-  
-  // Show loading
-  document.getElementById('search-results-card').style.display = 'block';
-  document.getElementById('search-no-results').style.display = 'none';
-  document.getElementById('search-tips').style.display = 'none';
-  document.getElementById('search-results-list').innerHTML = '<div style="text-align:center;padding:48px"><div class="spinner" style="width:32px;height:32px;border-width:3px"></div><div style="margin-top:16px;color:var(--text3)">Searching...</div></div>';
-  
-  try {
-    let data;
-    
-    if (searchState.scope === 'account') {
-      // Search all accounts
-      const accounts = getSavedAccounts();
-      data = await apiCall('/api/search/all-accounts', {
-        accounts: accounts.map(a => ({ token: a.token, username: a.username })),
-        query,
-        mode: searchState.mode,
-        search_in: searchIn
-      });
-    } else if (searchType === 'code') {
-      // GitHub Code Search API
-      data = await apiCall('/api/search/code', {
-        token: S.token,
-        query,
-        username: searchState.scope === 'single' ? S.username : undefined,
-        repo: searchState.scope === 'single' ? S.currentRepo : undefined
-      });
-    } else if (searchType === 'issues') {
-      // Issues Search
-      data = await apiCall('/api/search/issues', {
-        token: S.token,
-        query,
-        username: S.username,
-        repo: searchState.scope === 'single' ? S.currentRepo : undefined
-      });
-    } else if (searchType === 'commits') {
-      // Commits Search
-      data = await apiCall('/api/search/commits', {
-        token: S.token,
-        query,
-        username: S.username,
-        repo: searchState.scope === 'single' ? S.currentRepo : undefined
-      });
-    } else {
-      // Repository search (advanced)
-      if (filePattern || excludePattern || language) {
-        data = await apiCall('/api/search/advanced', {
-          token: S.token,
-          query,
-          file_pattern: filePattern,
-          exclude_pattern: excludePattern,
-          file_extensions: extensions,
-          language,
-          username: S.username,
-          repo: searchState.scope === 'single' ? S.currentRepo : undefined
-        });
-      } else {
-        // Regular repository search
-        data = await apiCall('/api/search/repositories', {
-          token: S.token,
-          query,
-          scope: searchState.scope,
-          mode: searchState.mode,
-          search_in: searchIn,
-          file_extensions: extensions,
-          max_results: maxResults,
-          username: S.username,
-          repo: searchState.scope === 'single' ? S.currentRepo : undefined,
-          selected_repos: searchState.scope === 'selected' ? searchState.selectedRepos : undefined
-        });
-      }
-    }
-    
-    if (data.error) {
-      throw new Error(data.error);
-    }
-    
-    renderSearchResults(data);
-    
-  } catch (e) {
-    document.getElementById('search-results-list').innerHTML = `
-      <div class="empty-state">
-        <i class="fas fa-exclamation-triangle empty-icon" style="color:var(--red)"></i>
-        <p style="color:var(--red)">Search failed: ${e.message}</p>
-      </div>
-    `;
-  }
-}
-
-function renderSearchResults(data) {
-  const results = data.results || data.items || [];
-  const totalCount = data.total_results || data.total_count || results.length;
-  
-  document.getElementById('search-results-count').textContent = `${totalCount} result${totalCount !== 1 ? 's' : ''}`;
-  
-  // Summary
-  const summary = [];
-  if (data.query) summary.push(`Query: <strong>${data.query}</strong>`);
-  if (data.scope) summary.push(`Scope: <strong>${data.scope}</strong>`);
-  if (data.mode) summary.push(`Mode: <strong>${data.mode}</strong>`);
-  if (data.repositories_searched) summary.push(`Repos searched: <strong>${data.repositories_searched}</strong>`);
-  if (data.accounts_searched) summary.push(`Accounts: <strong>${data.accounts_searched}</strong>`);
-  
-  document.getElementById('search-summary').innerHTML = summary.join(' &nbsp;|&nbsp; ');
-  
-  if (results.length === 0) {
-    document.getElementById('search-results-card').style.display = 'none';
-    document.getElementById('search-no-results').style.display = 'block';
-    return;
-  }
-  
-  // Render results
-  const resultsList = document.getElementById('search-results-list');
-  resultsList.innerHTML = results.map(result => {
-    if (result.type === 'file') {
-      return renderFileResult(result);
-    } else if (result.type === 'repository') {
-      return renderRepoResult(result);
-    } else {
-      return renderGenericResult(result);
-    }
-  }).join('');
-  
-  searchState.lastResults = results;
-}
-
-function renderFileResult(result) {
-  const score = Math.round(result.total_score || result.score || 0);
-  const scoreColor = score > 70 ? 'var(--green)' : score > 40 ? 'var(--yellow)' : 'var(--text3)';
-  
-  return `
-    <div class="repo-item" style="cursor:default;flex-direction:column;align-items:flex-start;gap:8px;margin-bottom:8px">
-      <div style="display:flex;align-items:center;gap:8px;width:100%">
-        <i class="fas fa-file-code" style="color:var(--accent2)"></i>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;color:var(--text)">${result.path}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">
-            <i class="fas fa-folder" style="font-size:9px"></i> ${result.username}/${result.repo}
-            ${result.account ? ` &nbsp;·&nbsp; <i class="fas fa-user" style="font-size:9px"></i> ${result.account}` : ''}
-          </div>
-        </div>
-        <div style="background:${scoreColor};color:#000;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;flex-shrink:0">
-          ${score}%
-        </div>
-        <a href="${result.url}" target="_blank" class="btn btn-sm btn-secondary">
-          <i class="fas fa-external-link-alt"></i> View
-        </a>
-      </div>
-      ${result.matches && result.matches.length > 0 ? `
-        <div style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px;font-size:11px;font-family:var(--font-mono)">
-          <div style="color:var(--accent2);margin-bottom:6px;font-weight:600">
-            <i class="fas fa-list"></i> ${result.total_matches} match${result.total_matches !== 1 ? 'es' : ''} found
-          </div>
-          ${result.matches.slice(0, 3).map(m => `
-            <div style="margin-bottom:4px;padding-left:8px;border-left:2px solid var(--accent3)">
-              <span style="color:var(--text3)">Line ${m.line}:</span>
-              <span style="color:var(--text)">${escapeHtml(m.content.substring(0, 100))}${m.content.length > 100 ? '...' : ''}</span>
-            </div>
-          `).join('')}
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-function renderRepoResult(result) {
-  const score = Math.round(result.score || 0);
-  return `
-    <div class="repo-item" style="margin-bottom:8px">
-      <i class="fas fa-folder-open" style="color:var(--accent2)"></i>
-      <div class="repo-details">
-        <div class="rname">${result.name || result.repo}</div>
-        <div class="rdesc">${escapeHtml(result.description || 'No description')}</div>
-      </div>
-      <div style="background:var(--accent2);color:#000;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700">
-        ${score}%
-      </div>
-      <a href="${result.url || result.html_url}" target="_blank" class="btn btn-sm btn-secondary">
-        <i class="fas fa-external-link-alt"></i> Open
-      </a>
-    </div>
-  `;
-}
-
-function renderGenericResult(result) {
-  return `
-    <div class="repo-item" style="margin-bottom:8px;flex-direction:column;align-items:flex-start">
-      <div style="display:flex;align-items:center;gap:8px;width:100%">
-        <i class="fas fa-file" style="color:var(--text3)"></i>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;color:var(--text)">${result.name || result.path || 'Result'}</div>
-          ${result.repository ? `<div style="font-size:11px;color:var(--text3);margin-top:2px">${result.repository.full_name}</div>` : ''}
-        </div>
-        ${result.html_url ? `
-          <a href="${result.html_url}" target="_blank" class="btn btn-sm btn-secondary">
-            <i class="fas fa-external-link-alt"></i> View
-          </a>
-        ` : ''}
-      </div>
-    </div>
-  `;
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 </script>
