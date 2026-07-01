@@ -5,6 +5,8 @@ Full-featured GitHub management tool deployable on Render
 """
 
 import os
+import re
+import difflib
 import base64
 import requests
 from datetime import datetime
@@ -41,6 +43,33 @@ def require_token(f):
             return jsonify({'error': 'No GitHub token provided'}), 401
         return f(token, *args, **kwargs)
     return decorated
+
+
+def fuzzy_score(term, text):
+    """Lightweight 'semantic' similarity: sequence ratio + token overlap.
+    No ML dependency required, so it stays fast and safe to run on a
+    free-tier Render instance."""
+    if not term or not text:
+        return 0.0
+    term_l, text_l = term.lower(), text.lower()
+    ratio = difflib.SequenceMatcher(None, term_l, text_l).ratio()
+    term_tokens = set(re.findall(r'[a-z0-9]+', term_l))
+    text_tokens = set(re.findall(r'[a-z0-9]+', text_l))
+    overlap = (len(term_tokens & text_tokens) / len(term_tokens)) if term_tokens else 0.0
+    # partial substring token match bumps the score too (e.g. "vidrock" in "vidrockapi")
+    partial = 1.0 if any(t in text_l for t in term_tokens) else 0.0
+    return max(ratio, overlap, partial * 0.6)
+
+
+def text_matches(term, text, mode):
+    if not text:
+        return False
+    if mode == 'exact':
+        return re.search(r'\b' + re.escape(term) + r'\b', text, re.IGNORECASE) is not None
+    if mode == 'semantic':
+        return fuzzy_score(term, text) >= 0.34
+    # partial (default) — plain case-insensitive substring
+    return term.lower() in text.lower()
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -571,6 +600,166 @@ def get_org_repos():
         return jsonify({'error': 'Failed to fetch organization repos'}), resp.status_code
     
     return jsonify({'repos': resp.json()})
+
+
+# ─── Advanced Search ──────────────────────────────────────────────────────────
+
+@app.route('/api/search/repos', methods=['POST'])
+def search_repos():
+    """Search repo names / descriptions / full_name for one account."""
+    data = request.json or {}
+    token = data.get('token')
+    org = data.get('org')  # optional: search an org's repos instead of the user's
+    term = data.get('term', '').strip()
+    mode = data.get('mode', 'partial')
+    if not token:
+        return jsonify({'error': 'Token required'}), 400
+    if not term:
+        return jsonify({'error': 'Search term required'}), 400
+
+    s = github_session(token)
+    if org:
+        resp = s.get(f'{GITHUB_API}/orgs/{org}/repos', params={'per_page': 100, 'sort': 'updated'})
+    else:
+        resp = s.get(f'{GITHUB_API}/user/repos', params={'per_page': 100, 'sort': 'updated', 'type': 'all'})
+
+    if not resp.ok:
+        try:
+            msg = resp.json().get('message', 'Failed to fetch repos')
+        except Exception:
+            msg = 'Failed to fetch repos'
+        return jsonify({'error': msg}), resp.status_code
+
+    repos = resp.json()
+    matches = []
+    for r in repos:
+        haystack = ' '.join(filter(None, [r.get('name'), r.get('description'), r.get('full_name')]))
+        if text_matches(term, haystack, mode):
+            matches.append({
+                'name': r.get('name'),
+                'full_name': r.get('full_name'),
+                'description': r.get('description'),
+                'html_url': r.get('html_url'),
+                'stargazers_count': r.get('stargazers_count'),
+                'language': r.get('language'),
+                'private': r.get('private'),
+                'updated_at': r.get('updated_at'),
+            })
+    return jsonify({'matches': matches, 'scanned': len(repos)})
+
+
+@app.route('/api/search/code', methods=['POST'])
+def search_code():
+    """Proxy to GitHub's indexed code search (fast, but rate-limited to ~10 req/min)."""
+    data = request.json or {}
+    token = data.get('token')
+    term = data.get('term', '').strip()
+    username = data.get('username')  # scope to a user/org
+    repo = data.get('repo')          # scope to a single "owner/name"
+    mode = data.get('mode', 'partial')
+    page = int(data.get('page', 1) or 1)
+
+    if not token:
+        return jsonify({'error': 'Token required'}), 400
+    if not term:
+        return jsonify({'error': 'Search term required'}), 400
+
+    q = f'"{term}"' if mode == 'exact' else term
+    if repo:
+        q += f' repo:{repo}'
+    elif username:
+        q += f' user:{username}'
+
+    s = github_session(token)
+    resp = s.get(f'{GITHUB_API}/search/code', params={'q': q, 'per_page': 50, 'page': page})
+
+    if not resp.ok:
+        try:
+            msg = resp.json().get('message', 'Code search failed')
+        except Exception:
+            msg = 'Code search failed'
+        return jsonify({'error': msg}), resp.status_code
+
+    result = resp.json()
+    items = [{
+        'name': it.get('name'),
+        'path': it.get('path'),
+        'repository': (it.get('repository') or {}).get('full_name'),
+        'html_url': it.get('html_url'),
+        'sha': it.get('sha'),
+    } for it in result.get('items', [])]
+
+    return jsonify({
+        'items': items,
+        'total_count': result.get('total_count', 0),
+        'incomplete_results': result.get('incomplete_results', False),
+        'page': page,
+    })
+
+
+@app.route('/api/repos/tree', methods=['POST'])
+def get_repo_tree():
+    """Full recursive file listing for a repo — used to size the progress bar
+    before a deep scan, and to enumerate candidate files to grep."""
+    data = request.json or {}
+    token = data.get('token')
+    username = data.get('username')
+    repo = data.get('repo')
+    branch = data.get('branch')
+
+    if not all([token, username, repo]):
+        return jsonify({'error': 'token, username and repo are required'}), 400
+
+    s = github_session(token)
+
+    if not branch:
+        repo_resp = s.get(f'{GITHUB_API}/repos/{username}/{repo}')
+        if not repo_resp.ok:
+            return jsonify({'error': 'Failed to fetch repo info'}), repo_resp.status_code
+        branch = repo_resp.json().get('default_branch', 'main')
+
+    tree_resp = s.get(f'{GITHUB_API}/repos/{username}/{repo}/git/trees/{branch}', params={'recursive': 1})
+    if not tree_resp.ok:
+        try:
+            msg = tree_resp.json().get('message', 'Failed to fetch tree')
+        except Exception:
+            msg = 'Failed to fetch tree'
+        return jsonify({'error': msg}), tree_resp.status_code
+
+    tree_data = tree_resp.json()
+    files = [
+        {'path': t['path'], 'sha': t['sha'], 'size': t.get('size', 0)}
+        for t in tree_data.get('tree', []) if t.get('type') == 'blob'
+    ]
+    return jsonify({'files': files, 'truncated': tree_data.get('truncated', False), 'branch': branch})
+
+
+@app.route('/api/repos/blob', methods=['POST'])
+def get_blob():
+    """Fetch a single file's content by blob sha (one call, no path lookup) —
+    used by the deep scan to grep file contents."""
+    data = request.json or {}
+    token = data.get('token')
+    username = data.get('username')
+    repo = data.get('repo')
+    sha = data.get('sha')
+
+    if not all([token, username, repo, sha]):
+        return jsonify({'error': 'token, username, repo and sha are required'}), 400
+
+    s = github_session(token)
+    resp = s.get(f'{GITHUB_API}/repos/{username}/{repo}/git/blobs/{sha}')
+    if not resp.ok:
+        return jsonify({'error': 'Failed to fetch blob'}), resp.status_code
+
+    blob = resp.json()
+    content = ''
+    if blob.get('encoding') == 'base64':
+        try:
+            content = base64.b64decode(blob['content']).decode('utf-8', errors='replace')
+        except Exception:
+            content = ''
+    return jsonify({'content': content, 'size': blob.get('size', 0)})
 
 
 # ─── Batch Operations ─────────────────────────────────────────────────────────
